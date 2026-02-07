@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "277668187996",
+    "project_id": "chefchat-e7503",
+    "storage_bucket": "chefchat-e7503.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:277668187996:android:a29c8f596f4127c0f0bb99",
+        "android_client_info": {
+          "package_name": "com.company.chefchat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCe-1XR_cs2TotM9JApgAwa5wCKh-Ue1RI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

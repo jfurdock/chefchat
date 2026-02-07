@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useRecipe } from '@/src/hooks/useRecipes';
-import { useCookingStore, VoiceState } from '@/src/stores/cookingStore';
+import { useCookingStore } from '@/src/stores/cookingStore';
+import { useVoice } from '@/src/hooks/useVoice';
+import VoiceIndicator from '@/src/components/VoiceIndicator';
 import Colors from '@/constants/Colors';
 
 /**
@@ -22,16 +24,29 @@ export default function CookingSessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { recipe, loading } = useRecipe(id);
   const router = useRouter();
+  const autoVoiceStartedRef = useRef(false);
+  const lastAnnouncedStepRef = useRef<number | null>(null);
 
   const {
     currentStep,
     isActive,
-    voiceState,
     startSession,
     endSession,
     nextStep,
     previousStep,
   } = useCookingStore();
+  const {
+    voiceState,
+    transcriptText,
+    assistantText,
+    error: voiceError,
+    startVoiceLoop,
+    stopVoiceLoop,
+    toggleVoiceLoop,
+    interruptAndListen,
+    announceCurrentStep,
+    isVoiceLoopActive,
+  } = useVoice();
 
   // Start the cooking session when recipe loads
   useEffect(() => {
@@ -40,13 +55,45 @@ export default function CookingSessionScreen() {
     }
   }, [recipe]);
 
+  // Start voice mode automatically once per cooking session.
+  useEffect(() => {
+    if (recipe && isActive && !autoVoiceStartedRef.current) {
+      autoVoiceStartedRef.current = true;
+      void startVoiceLoop();
+    }
+  }, [recipe, isActive, startVoiceLoop]);
+
+  useEffect(() => {
+    if (!isActive) {
+      autoVoiceStartedRef.current = false;
+      lastAnnouncedStepRef.current = null;
+    }
+  }, [isActive]);
+
+  // If the step changes while voice mode is active (manual tap or command),
+  // read the new step out loud so users can stay hands-free.
+  useEffect(() => {
+    if (!recipe || !isActive || !isVoiceLoopActive) return;
+
+    if (lastAnnouncedStepRef.current === null) {
+      lastAnnouncedStepRef.current = currentStep;
+      return;
+    }
+
+    if (lastAnnouncedStepRef.current !== currentStep) {
+      lastAnnouncedStepRef.current = currentStep;
+      void announceCurrentStep();
+    }
+  }, [announceCurrentStep, currentStep, isActive, isVoiceLoopActive, recipe]);
+
   function handleEndSession() {
     Alert.alert('End Cooking?', 'Are you sure you want to stop cooking?', [
       { text: 'Keep Cooking', style: 'cancel' },
       {
         text: 'End Session',
         style: 'destructive',
-        onPress: () => {
+        onPress: async () => {
+          await stopVoiceLoop();
           endSession();
           router.back();
         },
@@ -122,19 +169,19 @@ export default function CookingSessionScreen() {
           )}
         </View>
 
-        {/* Voice state indicator — placeholder for Phase 2 */}
-        <View style={styles.voiceSection}>
-          <View style={[styles.voiceCircle, voiceState === 'listening' && styles.voiceCircleActive]}>
-            <Ionicons
-              name={voiceState === 'listening' ? 'mic' : 'mic-outline'}
-              size={32}
-              color={voiceState === 'listening' ? Colors.brand.cream : Colors.light.textSecondary}
-            />
-          </View>
-          <Text style={styles.voiceHint}>
-            Voice control coming soon — use the buttons below for now
-          </Text>
-        </View>
+        <VoiceIndicator
+          voiceState={voiceState}
+          transcriptText={transcriptText}
+          assistantText={assistantText}
+          error={voiceError}
+          onPress={() => {
+            if (voiceState === 'speaking') {
+              void interruptAndListen();
+            } else {
+              void toggleVoiceLoop();
+            }
+          }}
+        />
 
         {/* Manual navigation controls */}
         <View style={styles.controls}>
@@ -158,7 +205,8 @@ export default function CookingSessionScreen() {
           {isLastStep ? (
             <TouchableOpacity
               style={styles.finishButton}
-              onPress={() => {
+              onPress={async () => {
+                await stopVoiceLoop();
                 endSession();
                 Alert.alert('Well done!', 'You finished cooking. Enjoy your meal!', [
                   { text: 'Thanks!', onPress: () => router.back() },
@@ -267,31 +315,6 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     flex: 1,
     lineHeight: 20,
-  },
-  voiceSection: {
-    alignItems: 'center',
-    marginTop: 32,
-    gap: 12,
-  },
-  voiceCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.light.backgroundSecondary,
-    borderWidth: 2,
-    borderColor: Colors.light.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  voiceCircleActive: {
-    backgroundColor: Colors.brand.sage,
-    borderColor: Colors.brand.sage,
-  },
-  voiceHint: {
-    fontSize: 13,
-    color: Colors.light.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 32,
   },
   controls: {
     flexDirection: 'row',

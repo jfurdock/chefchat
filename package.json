@@ -8,7 +8,10 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "import:recipes:dry": "node scripts/importRecipesCsv.js --dry-run",
-    "import:recipes": "node scripts/importRecipesCsv.js"
+    "import:recipes": "node scripts/importRecipesCsv.js",
+    "functions:install": "npm --prefix functions install",
+    "functions:build": "npm --prefix functions run build",
+    "functions:deploy": "npm --prefix functions run deploy"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -19,12 +22,15 @@
     "@react-native-firebase/functions": "^23.8.6",
     "@react-navigation/native": "^7.1.8",
     "expo": "~54.0.33",
+    "expo-audio": "~1.1.1",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
     "expo-font": "~14.0.11",
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",
+    "expo-speech": "~14.0.8",
+    "expo-speech-recognition": "^3.1.0",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-web-browser": "~15.0.10",

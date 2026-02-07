@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.chefchat.app",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "ChefChat needs microphone access so you can cook hands-free with voice commands."
+        "NSMicrophoneUsageDescription": "ChefChat needs microphone access so you can cook hands-free with voice commands.",
+        "NSSpeechRecognitionUsageDescription": "ChefChat uses speech recognition to understand your cooking questions in real time."
       }
     },
     "android": {
@@ -37,6 +38,19 @@
     "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "ChefChat needs microphone access so you can cook hands-free."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "ChefChat needs microphone access so you can cook hands-free.",
+          "speechRecognitionPermission": "ChefChat needs speech recognition so it can understand your voice while cooking."
+        }
+      ],
       [
         "expo-build-properties",
         {

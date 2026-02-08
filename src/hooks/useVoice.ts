@@ -9,7 +9,11 @@ import { requestInworldCookingReply } from '@/src/services/chatService';
 import { interruptAndSpeak, isSpeaking, stopSpeaking } from '@/src/services/ttsService';
 import { Ingredient, Recipe, Step } from '@/src/types/recipe';
 
-const INTERIM_COMMIT_DELAY_MS = 900;
+const INTERIM_COMMIT_DELAY_MS = 650;
+const SHORT_UTTERANCE_COMMIT_DELAY_MS = 320;
+const MEDIUM_UTTERANCE_COMMIT_DELAY_MS = 480;
+const SPEECH_END_COMMIT_DELAY_MS = 220;
+const BARGE_IN_INTERIM_CONFIRM_WINDOW_MS = 1200;
 
 type VoiceReply = {
   text: string;
@@ -54,6 +58,31 @@ const QUICK_COMMANDS = new Set([
   'done',
 ]);
 
+const BARGE_IN_TRIGGER_TOKENS = new Set([
+  'chef',
+  'next',
+  'continue',
+  'previous',
+  'back',
+  'repeat',
+  'again',
+  'stop',
+  'wait',
+  'pause',
+]);
+
+const IMMEDIATE_BARGE_IN_SINGLE_TOKENS = new Set([
+  'chef',
+  'stop',
+  'wait',
+  'pause',
+  'next',
+  'continue',
+  'previous',
+  'back',
+  'repeat',
+]);
+
 const STEP_WORD_TO_NUMBER: Record<string, number> = {
   one: 1,
   two: 2,
@@ -85,6 +114,15 @@ function includesAny(text: string, phrases: string[]): boolean {
 
 function normalizeText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function getCommitDelayMs(transcript: string): number {
+  const normalized = normalizeText(transcript);
+  if (!normalized) return INTERIM_COMMIT_DELAY_MS;
+  const wordCount = normalized.split(' ').filter(Boolean).length;
+  if (wordCount <= 3) return SHORT_UTTERANCE_COMMIT_DELAY_MS;
+  if (wordCount <= 8) return MEDIUM_UTTERANCE_COMMIT_DELAY_MS;
+  return INTERIM_COMMIT_DELAY_MS;
 }
 
 function isLikelyAssistantEcho(candidate: string, assistantText: string): boolean {
@@ -132,6 +170,84 @@ function isLikelyAssistantPlaybackEcho(candidate: string, assistantText: string)
 
   const overlap = candidateTokens.filter((token) => assistantTokens.includes(token)).length;
   return overlap / candidateTokens.length >= 0.6;
+}
+
+function hasUserBargeInSignal(
+  candidate: string,
+  assistantText: string,
+  options?: { isFinal?: boolean }
+): boolean {
+  const candidateTokens = Array.from(new Set(tokenize(candidate)));
+  if (!candidateTokens.length) return false;
+
+  const isFinal = !!options?.isFinal;
+  const hasTrigger = candidateTokens.some((token) => BARGE_IN_TRIGGER_TOKENS.has(token));
+  const isSingleImmediateCommand =
+    candidateTokens.length === 1 && IMMEDIATE_BARGE_IN_SINGLE_TOKENS.has(candidateTokens[0]);
+
+  // Wake-word always qualifies as a deliberate user interruption.
+  if (candidateTokens.includes('chef')) {
+    return true;
+  }
+
+  const assistantTokens = new Set(tokenize(assistantText));
+  const novelTokens = candidateTokens.filter((token) => !assistantTokens.has(token));
+  if (!novelTokens.length) return false;
+  const strongNovelTokenCount = novelTokens.filter((token) => token.length >= 3).length;
+
+  // While STT is still interim, only allow explicit command/wake words.
+  // This prevents assistant playback fragments from causing false interrupts.
+  if (!isFinal) {
+    return isSingleImmediateCommand || hasTrigger;
+  }
+
+  if (isSingleImmediateCommand || hasTrigger) {
+    return true;
+  }
+
+  // Final transcript but still a single non-command token: too risky to interrupt.
+  if (candidateTokens.length === 1) {
+    return false;
+  }
+
+  // For general final utterances, require at least 2 novel tokens.
+  return novelTokens.length >= 2 && strongNovelTokenCount >= 2;
+}
+
+function isConsistentInterimCandidate(previous: string, next: string): boolean {
+  const prevNorm = normalizeText(previous);
+  const nextNorm = normalizeText(next);
+  if (!prevNorm || !nextNorm) return false;
+  if (prevNorm === nextNorm) return true;
+  if (prevNorm.startsWith(nextNorm) || nextNorm.startsWith(prevNorm)) return true;
+
+  const prevTokens = tokenize(prevNorm);
+  const nextTokens = tokenize(nextNorm);
+  if (!prevTokens.length || !nextTokens.length) return false;
+
+  const overlap = nextTokens.filter((token) => prevTokens.includes(token)).length;
+  const minLen = Math.min(prevTokens.length, nextTokens.length);
+  return overlap >= Math.max(1, minLen - 1);
+}
+
+function extractBargeInKeyword(transcript: string): string {
+  const tokens = tokenize(transcript);
+  for (const token of tokens) {
+    if (IMMEDIATE_BARGE_IN_SINGLE_TOKENS.has(token)) {
+      return token;
+    }
+  }
+  return '';
+}
+
+function mergeBargeInKeyword(transcript: string, keyword: string): string {
+  const normalizedKeyword = normalizeText(keyword);
+  if (!normalizedKeyword) return transcript.trim();
+
+  const normalizedTranscript = normalizeText(transcript);
+  if (!normalizedTranscript) return normalizedKeyword;
+  if (normalizedTranscript.includes(normalizedKeyword)) return transcript.trim();
+  return `${normalizedKeyword} ${transcript.trim()}`.trim();
 }
 
 function tokenize(value: string): string[] {
@@ -577,6 +693,8 @@ export function useVoice() {
   const recognitionActiveRef = useRef(false);
   const isRespondingRef = useRef(false);
   const pendingUtteranceRef = useRef<string | null>(null);
+  const bargeInKeywordRef = useRef('');
+  const interimBargeCandidateRef = useRef<{ normalized: string; count: number; at: number } | null>(null);
   const lastProcessedUtteranceRef = useRef<{ normalized: string; at: number } | null>(null);
   const assistantSpeakingRef = useRef(false);
   const currentAssistantReplyRef = useRef('');
@@ -724,6 +842,7 @@ export function useVoice() {
     const text = latestTranscriptRef.current.trim();
     if (!text) return;
     latestTranscriptRef.current = '';
+    bargeInKeywordRef.current = '';
     await processUtterance(text);
   }, [clearCommitTimer, processUtterance]);
 
@@ -741,13 +860,12 @@ export function useVoice() {
         continuous: true,
         addsPunctuation: true,
         iosTaskHint: 'dictation',
-        // Voice processing can lower speaker output volume on iOS.
-        // Keep it off so assistant playback stays audible.
-        iosVoiceProcessingEnabled: false,
+        // Enable iOS voice processing to reduce assistant self-capture.
+        iosVoiceProcessingEnabled: true,
         iosCategory: {
           category: 'playAndRecord',
           categoryOptions: ['defaultToSpeaker', 'allowBluetooth'],
-          mode: 'default',
+          mode: 'voiceChat',
         },
       });
       recognitionActiveRef.current = true;
@@ -785,6 +903,8 @@ export function useVoice() {
     loopActiveRef.current = false;
     setIsVoiceLoopActive(false);
     pendingUtteranceRef.current = null;
+    bargeInKeywordRef.current = '';
+    interimBargeCandidateRef.current = null;
     lastProcessedUtteranceRef.current = null;
     latestTranscriptRef.current = '';
     clearCommitTimer();
@@ -844,6 +964,8 @@ export function useVoice() {
     loopActiveRef.current = true;
     setIsVoiceLoopActive(true);
     latestTranscriptRef.current = '';
+    bargeInKeywordRef.current = '';
+    interimBargeCandidateRef.current = null;
     pendingUtteranceRef.current = null;
     lastProcessedUtteranceRef.current = null;
     setVoiceState('listening');
@@ -927,15 +1049,21 @@ export function useVoice() {
 
     const speechStartSub = ExpoSpeechRecognitionModule.addListener('speechstart', () => {
       if (!loopActiveRef.current) return;
-
-      if (assistantSpeakingRef.current) {
-        void stopSpeaking(true).then(() => {
-          assistantSpeakingRef.current = false;
-          if (loopActiveRef.current) {
-            setVoiceState('listening');
-          }
-        });
+      if (!assistantSpeakingRef.current && !isRespondingRef.current) {
+        setVoiceState('listening');
       }
+    });
+
+    const speechEndSub = ExpoSpeechRecognitionModule.addListener('speechend', () => {
+      if (!loopActiveRef.current) return;
+      if (assistantSpeakingRef.current) return;
+      if (isRespondingRef.current) return;
+      if (!latestTranscriptRef.current.trim()) return;
+
+      clearCommitTimer();
+      commitTimerRef.current = setTimeout(() => {
+        void commitBufferedTranscript();
+      }, SPEECH_END_COMMIT_DELAY_MS);
     });
 
     const resultSub = ExpoSpeechRecognitionModule.addListener(
@@ -946,14 +1074,76 @@ export function useVoice() {
         const transcript = primaryTranscript(event);
         if (!transcript) return;
 
-        if (
-          assistantSpeakingRef.current &&
-          isLikelyAssistantPlaybackEcho(transcript, currentAssistantReplyRef.current)
-        ) {
-          return;
-        }
+        if (assistantSpeakingRef.current) {
+          const isPlaybackEcho = isLikelyAssistantPlaybackEcho(transcript, currentAssistantReplyRef.current);
+          if (isPlaybackEcho) {
+            interimBargeCandidateRef.current = null;
+            return;
+          }
 
-        if (isLikelyAssistantEcho(transcript, currentAssistantReplyRef.current)) {
+          const isAssistantEcho = isLikelyAssistantEcho(transcript, currentAssistantReplyRef.current);
+          if (isAssistantEcho) {
+            interimBargeCandidateRef.current = null;
+            return;
+          }
+
+          // Mission-critical guard: only interrupt if transcript contains
+          // at least one meaningful token that was NOT just spoken by assistant.
+          if (
+            !hasUserBargeInSignal(transcript, currentAssistantReplyRef.current, {
+              isFinal: !!event.isFinal,
+            })
+          ) {
+            interimBargeCandidateRef.current = null;
+            return;
+          }
+
+          // Guard against noisy interim hallucinations by requiring a stable
+          // interim candidate twice before interrupting assistant playback.
+          if (!event.isFinal) {
+            const normalizedCandidate = normalizeText(transcript);
+            const now = Date.now();
+            const previous = interimBargeCandidateRef.current;
+            const hasImmediateCommand = tokenize(transcript).some((token) =>
+              IMMEDIATE_BARGE_IN_SINGLE_TOKENS.has(token)
+            );
+
+            // Explicit command/wake words should interrupt quickly.
+            if (hasImmediateCommand) {
+              interimBargeCandidateRef.current = null;
+            } else if (
+              previous &&
+              isConsistentInterimCandidate(previous.normalized, normalizedCandidate) &&
+              now - previous.at <= BARGE_IN_INTERIM_CONFIRM_WINDOW_MS
+            ) {
+              interimBargeCandidateRef.current = {
+                normalized: normalizedCandidate,
+                count: previous.count + 1,
+                at: now,
+              };
+            } else {
+              interimBargeCandidateRef.current = {
+                normalized: normalizedCandidate,
+                count: 1,
+                at: now,
+              };
+              return;
+            }
+
+            if (!hasImmediateCommand && (interimBargeCandidateRef.current?.count ?? 0) < 2) {
+              return;
+            }
+          } else {
+            interimBargeCandidateRef.current = null;
+          }
+
+          const keyword = extractBargeInKeyword(transcript);
+          if (keyword) {
+            bargeInKeywordRef.current = keyword;
+          }
+
+          setVoiceState('listening');
+        } else if (isLikelyAssistantEcho(transcript, currentAssistantReplyRef.current)) {
           return;
         }
 
@@ -962,10 +1152,14 @@ export function useVoice() {
           if (playing) {
             await stopSpeaking(true);
             assistantSpeakingRef.current = false;
+            if (loopActiveRef.current && !isRespondingRef.current) {
+              setVoiceState('listening');
+            }
           }
 
-          latestTranscriptRef.current = transcript;
-          setTranscriptText(transcript);
+          const mergedTranscript = mergeBargeInKeyword(transcript, bargeInKeywordRef.current);
+          latestTranscriptRef.current = mergedTranscript;
+          setTranscriptText(mergedTranscript);
 
           if (event.isFinal) {
             await commitBufferedTranscript();
@@ -975,7 +1169,7 @@ export function useVoice() {
           clearCommitTimer();
           commitTimerRef.current = setTimeout(() => {
             void commitBufferedTranscript();
-          }, INTERIM_COMMIT_DELAY_MS);
+          }, getCommitDelayMs(mergedTranscript));
         })();
       }
     );
@@ -1020,6 +1214,7 @@ export function useVoice() {
     return () => {
       startSub.remove();
       speechStartSub.remove();
+      speechEndSub.remove();
       resultSub.remove();
       endSub.remove();
       errorSub.remove();

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { doc, getFirestore, updateDoc } from '@react-native-firebase/firestore';
+import PaywallSheet from '@/src/components/PaywallSheet';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useAuthStore } from '@/src/stores/authStore';
 import { useOnboardingStore } from '@/src/stores/onboardingStore';
+import { useSubscriptionStore } from '@/src/stores/subscriptionStore';
 import { signOut } from '@/src/services/authService';
 import {
   DEFAULT_TTS_VOICE_OPTIONS,
@@ -31,6 +33,11 @@ export default function ProfileScreen() {
   const [voices, setVoices] = useState<TtsVoiceOption[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [savingVoiceName, setSavingVoiceName] = useState<string | null>(null);
+  const subscriptionPlan = useSubscriptionStore((s) => s.plan);
+  const creditsUsed = useSubscriptionStore((s) => s.creditsUsed);
+  const creditsLimit = useSubscriptionStore((s) => s.creditsLimit);
+  const canUseVoice = useSubscriptionStore((s) => s.canUseVoice);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const visibleVoices = useMemo(() => {
     if (!voices.length) return DEFAULT_TTS_VOICE_OPTIONS;
@@ -154,6 +161,30 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={Colors.light.textSecondary} />
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => {
+            if (canUseVoice) {
+              void Linking.openURL('https://apps.apple.com/account/subscriptions');
+            } else {
+              setShowPaywall(true);
+            }
+          }}
+        >
+          <Ionicons name="star-outline" size={22} color={Colors.light.text} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.menuText}>ChefChat Pro</Text>
+            <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>
+              {subscriptionPlan === 'pro'
+                ? `${Math.max(0, creditsLimit - creditsUsed)} credits remaining`
+                : subscriptionPlan === 'trial'
+                  ? `Trial · ${Math.max(0, creditsLimit - creditsUsed)} credits remaining`
+                  : 'Subscribe to unlock voice cooking'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.light.textSecondary} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.menuItem}>
           <Ionicons name="timer-outline" size={22} color={Colors.light.text} />
           <Text style={styles.menuText}>Cooking History</Text>
@@ -212,6 +243,8 @@ export default function ProfileScreen() {
         <Ionicons name="log-out-outline" size={22} color={Colors.light.text} />
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
+
+      <PaywallSheet visible={showPaywall} onClose={() => setShowPaywall(false)} />
     </ScrollView>
   );
 }

@@ -21,6 +21,7 @@ export default function VoiceFeatureScreen() {
         <Text style={styles.body}>
           ChefChat guides you through every step with voice. Just say "next" to move forward, or ask questions while you cook.
         </Text>
+        <Text style={styles.trial}>Includes 7-day free trial - no payment required.</Text>
       </View>
     </OnboardingScreen>
   );
@@ -51,5 +52,12 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  trial: {
+    fontSize: 14,
+    color: Colors.brand.sage,
+    textAlign: 'center',
+    fontWeight: '600',
+    marginTop: 12,
   },
 });

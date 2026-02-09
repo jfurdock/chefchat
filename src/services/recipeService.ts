@@ -155,6 +155,8 @@ export async function toggleFavorite(userId: string, recipeId: string): Promise<
       favorites: [],
       dietaryPreferences: [],
       cookingHistory: [],
+      skillLevel: null,
+      onboardingCompleted: false,
       createdAt: serverTimestamp(),
     };
     await setDoc(userDoc, profileSeed, { merge: true });
@@ -164,7 +166,7 @@ export async function toggleFavorite(userId: string, recipeId: string): Promise<
     };
   }
 
-  const favorites: string[] = userData.favorites || [];
+  const favorites: string[] = userData?.favorites || [];
   const isFavorite = favorites.includes(recipeId);
 
   if (isFavorite) {

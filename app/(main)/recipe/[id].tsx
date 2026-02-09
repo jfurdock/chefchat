@@ -3,7 +3,10 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } fr
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useRecipe, useFavorites } from '@/src/hooks/useRecipes';
+import PaywallSheet from '@/src/components/PaywallSheet';
+import { useAuthStore } from '@/src/stores/authStore';
 import { useShoppingStore } from '@/src/stores/shoppingStore';
+import { useSubscriptionStore } from '@/src/stores/subscriptionStore';
 import Colors from '@/constants/Colors';
 
 export default function RecipeDetailScreen() {
@@ -11,8 +14,11 @@ export default function RecipeDetailScreen() {
   const { recipe, loading, error } = useRecipe(id);
   const { toggleFavorite, isFavorite } = useFavorites();
   const { addRecipeToShoppingList, isRecipeOnShoppingList } = useShoppingStore();
+  const refreshSubscription = useSubscriptionStore((s) => s.refresh);
+  const uid = useAuthStore((s) => s.user?.uid);
   const router = useRouter();
   const [addedToList, setAddedToList] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   if (loading) {
     return (
@@ -139,7 +145,14 @@ export default function RecipeDetailScreen() {
         <TouchableOpacity
           style={styles.cookButton}
           activeOpacity={0.8}
-          onPress={() => router.push(`/(main)/recipe/cook/${recipe.id}`)}
+          onPress={async () => {
+            if (uid) await refreshSubscription(uid);
+            if (useSubscriptionStore.getState().canUseVoice) {
+              router.push(`/(main)/recipe/cook/${recipe.id}`);
+            } else {
+              setShowPaywall(true);
+            }
+          }}
         >
           <Image source={chefHatIcon} style={styles.cookButtonIcon} />
           <Text style={styles.cookButtonText}>Start Cooking</Text>
@@ -168,6 +181,11 @@ export default function RecipeDetailScreen() {
           </TouchableOpacity>
         )}
       </View>
+      <PaywallSheet
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onSubscribed={() => router.push(`/(main)/recipe/cook/${recipe.id}`)}
+      />
     </View>
   );
 }

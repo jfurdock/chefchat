@@ -17,6 +17,12 @@ service cloud.firestore {
     // User profiles: users can only read/write their own
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Voice usage is server-updated, but users need read access for client gating/UI.
+      match /voiceUsage/{cycleKey} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false;
+      }
     }
 
     // Conversation sessions: users can only access their own

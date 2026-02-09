@@ -15,7 +15,9 @@ let configured = false;
 export async function configureRevenueCat(): Promise<void> {
   if (configured) return;
   if (!REVENUECAT_API_KEY_IOS) {
-    console.warn('[RevenueCat] No API key configured, skipping init');
+    console.warn(
+      '[RevenueCat] No iOS API key configured. Set expo.extra.revenueCatApiKeyIos in app config or an EAS secret.',
+    );
     return;
   }
 

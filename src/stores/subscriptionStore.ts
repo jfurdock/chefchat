@@ -26,6 +26,35 @@ interface SubscriptionActions {
   reset: () => void;
 }
 
+function currentCycleKey(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function isPermissionDeniedError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string' && code.includes('permission-denied')) return true;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === 'string' && message.includes('permission-denied');
+}
+
+async function readCurrentCycleCredits(uid: string): Promise<number> {
+  try {
+    const db = getFirestore();
+    const usageSnap = await getDoc(doc(db, 'users', uid, 'voiceUsage', currentCycleKey()));
+    return usageSnap.data()?.totalCredits ?? 0;
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      console.warn(
+        '[SubscriptionStore] voiceUsage read denied; defaulting creditsUsed to 0. Deploy Firestore rules for users/{uid}/voiceUsage.',
+      );
+      return 0;
+    }
+    throw error;
+  }
+}
+
 function canUseVoice(state: SubscriptionState): boolean {
   const remaining = state.creditsLimit - state.creditsUsed;
   if (remaining <= 0) return false;
@@ -81,11 +110,7 @@ export const useSubscriptionStore = create<
         status = 'trialing';
       }
 
-      const now = new Date();
-      const cycleKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-      const usageSnap = await getDoc(doc(db, 'users', uid, 'voiceUsage', cycleKey));
-      const usageData = usageSnap.data();
-      const creditsUsed = usageData?.totalCredits ?? 0;
+      const creditsUsed = await readCurrentCycleCredits(uid);
 
       const LIMITS = { trial: 1200, pro: 12000, expired: 0 } as const;
       const creditsLimit = LIMITS[plan];
@@ -111,11 +136,7 @@ export const useSubscriptionStore = create<
       const info = await getCustomerInfo();
       const hasPro = hasProEntitlement(info);
 
-      const db = getFirestore();
-      const now = new Date();
-      const cycleKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-      const usageSnap = await getDoc(doc(db, 'users', uid, 'voiceUsage', cycleKey));
-      const creditsUsed = usageSnap.data()?.totalCredits ?? 0;
+      const creditsUsed = await readCurrentCycleCredits(uid);
 
       const current = get();
       let plan = current.plan;

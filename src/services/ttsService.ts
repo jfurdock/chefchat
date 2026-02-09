@@ -40,15 +40,15 @@ const VOICE_SETTINGS_KEY = 'chefchat_tts_voice_settings';
 const PLAYBACK_TIMEOUT_MS = 45000;
 
 const DEFAULT_SETTINGS: TtsVoiceSettings = {
-  voiceName: 'Lily',
+  voiceName: 'Dennis',
   languageCode: 'en-US',
   speakingRate: 1.0,
   pitch: 0,
 };
 
 export const DEFAULT_TTS_VOICE_OPTIONS: TtsVoiceOption[] = [
-  { name: 'Lily', languageCodes: ['en-US'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
   { name: 'Dennis', languageCodes: ['en-US'], ssmlGender: 'MALE', naturalSampleRateHertz: 24000 },
+  { name: 'Deborah', languageCodes: ['en-US'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
 ];
 
 let queue: string[] = [];

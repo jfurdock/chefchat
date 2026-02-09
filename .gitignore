@@ -43,3 +43,6 @@ scripts/serviceAccountKey.json
 # generated native folders
 /ios
 /android
+
+# Git worktrees
+.worktrees/

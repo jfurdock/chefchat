@@ -6,6 +6,7 @@ import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { doc, getDoc, getFirestore } from '@react-native-firebase/firestore';
 import { useAuthListener, useAuth } from '@/src/hooks/useAuth';
 import { useAuthStore } from '@/src/stores/authStore';
+import { useSubscriptionStore } from '@/src/stores/subscriptionStore';
 import Colors from '@/constants/Colors';
 import 'react-native-reanimated';
 
@@ -17,6 +18,8 @@ function AuthGate() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
   const setOnboardingCompleted = useAuthStore((s) => s.setOnboardingCompleted);
+  const hydrateSubscription = useSubscriptionStore((s) => s.hydrate);
+  const resetSubscription = useSubscriptionStore((s) => s.reset);
   const segments = useSegments();
   const router = useRouter();
 
@@ -43,6 +46,14 @@ function AuthGate() {
     return () => {
       mounted = false;
     };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user) {
+      resetSubscription();
+      return;
+    }
+    void hydrateSubscription(user.uid);
   }, [user?.uid]);
 
   useEffect(() => {

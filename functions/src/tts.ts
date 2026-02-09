@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions/v1';
 import { inworldRequest, readInworldConfig } from './inworldClient';
+import { consumeVoiceCredits, estimateTtsCredits } from './voiceQuota';
 
 type SynthesizeSpeechRequest = {
   text?: string;
@@ -120,6 +121,12 @@ export const synthesizeSpeech = functions
       throw new functions.https.HttpsError('internal', 'Inworld TTS returned empty audio.');
     }
 
+    const usage = await consumeVoiceCredits({
+      uid: context.auth.uid,
+      feature: 'tts',
+      amount: estimateTtsCredits(text),
+    });
+
     return {
       audioBase64: audioContent,
       mimeType: 'audio/mpeg',
@@ -128,6 +135,7 @@ export const synthesizeSpeech = functions
       speakingRate,
       pitch,
       provider: 'inworld',
+      usage,
     };
   });
 

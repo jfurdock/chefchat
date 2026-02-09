@@ -5,12 +5,15 @@ import {
   addDoc,
   serverTimestamp,
   doc,
+  getDoc,
+  setDoc,
   updateDoc,
   arrayUnion,
 } from '@react-native-firebase/firestore';
 import { getFunctions, httpsCallable } from '@react-native-firebase/functions';
 import { getAuth } from '@react-native-firebase/auth';
 import { Ingredient, Step } from '../types/recipe';
+import { notifyRecipeDataChanged } from './recipeDataSync';
 
 /**
  * Extracts text from an image using Firebase Cloud Function
@@ -705,7 +708,7 @@ interface SaveRecipeParams {
   cookTimeMinutes?: number;
   ingredients: Ingredient[];
   steps: Step[];
-  importMethod: 'photo' | 'manual' | 'url';
+  importMethod: 'manual' | 'url';
 }
 
 function sanitizeIngredientsForFirestore(ingredients: Ingredient[]): Ingredient[] {
@@ -777,6 +780,23 @@ export async function saveImportedRecipe(params: SaveRecipeParams): Promise<stri
       );
     }
 
+    const derivedCookMinutesFromSteps = sanitizedSteps.reduce((total, step) => {
+      if (typeof step.duration !== 'number' || !Number.isFinite(step.duration) || step.duration <= 0) {
+        return total;
+      }
+      return total + Math.ceil(step.duration / 60);
+    }, 0);
+
+    const prepMinutes =
+      typeof params.prepTimeMinutes === 'number' && Number.isFinite(params.prepTimeMinutes)
+        ? Math.max(0, Math.round(params.prepTimeMinutes))
+        : 0;
+    const cookMinutesRaw =
+      typeof params.cookTimeMinutes === 'number' && Number.isFinite(params.cookTimeMinutes)
+        ? Math.max(0, Math.round(params.cookTimeMinutes))
+        : 0;
+    const cookMinutes = cookMinutesRaw > 0 ? cookMinutesRaw : derivedCookMinutesFromSteps;
+
     // Create new recipe document
     const recipesCollection = collection(firestore, 'recipes');
 
@@ -791,14 +811,8 @@ export async function saveImportedRecipe(params: SaveRecipeParams): Promise<stri
       servings: 4,
       cuisine: '',
       tags: ['imported'],
-      prepTimeMinutes:
-        typeof params.prepTimeMinutes === 'number' && Number.isFinite(params.prepTimeMinutes)
-          ? Math.max(0, Math.round(params.prepTimeMinutes))
-          : 0,
-      cookTimeMinutes:
-        typeof params.cookTimeMinutes === 'number' && Number.isFinite(params.cookTimeMinutes)
-          ? Math.max(0, Math.round(params.cookTimeMinutes))
-          : 0,
+      prepTimeMinutes: prepMinutes,
+      cookTimeMinutes: cookMinutes,
       substitutions: {},
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -808,9 +822,34 @@ export async function saveImportedRecipe(params: SaveRecipeParams): Promise<stri
 
     // Add recipe ID to user's favorites
     const userDocRef = doc(firestore, 'users', currentUser.uid);
-    await updateDoc(userDocRef, {
-      favorites: arrayUnion(recipeId),
-    });
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      await updateDoc(userDocRef, {
+        favorites: arrayUnion(recipeId),
+      });
+    } else {
+      await setDoc(
+        userDocRef,
+        {
+          uid: currentUser.uid,
+          displayName: currentUser.displayName || currentUser.email || 'Chef',
+          email: currentUser.email || '',
+          favorites: [recipeId],
+          dietaryPreferences: [],
+          cookingHistory: [],
+          skillLevel: null,
+          preferredVoiceName: null,
+          onboardingCompleted: false,
+          subscriptionPlan: 'trial',
+          subscriptionStatus: 'inactive',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    notifyRecipeDataChanged();
 
     return recipeId;
   } catch (error) {

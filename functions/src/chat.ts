@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions/v1';
 import { inworldRequest, readInworldConfig } from './inworldClient';
+import { consumeVoiceCredits, estimateChatCredits } from './voiceQuota';
 
 type HistoryMessage = {
   role?: 'user' | 'assistant';
@@ -185,9 +186,16 @@ export const inworldChat = functions
       throw new functions.https.HttpsError('internal', 'Inworld chat returned empty response.');
     }
 
+    const usage = await consumeVoiceCredits({
+      uid: context.auth.uid,
+      feature: 'chat',
+      amount: estimateChatCredits(userMessage),
+    });
+
     return {
       response: content,
       provider: 'inworld',
       model,
+      usage,
     };
   });

@@ -8,6 +8,7 @@ interface CookingSession {
   currentStep: number;
   isActive: boolean;
   voiceState: VoiceState;
+  passiveListening: boolean;
   conversationHistory: { role: 'user' | 'assistant'; content: string }[];
   substitutionsMade: { original: string; replacement: string }[];
 }
@@ -19,6 +20,7 @@ interface CookingActions {
   nextStep: () => void;
   previousStep: () => void;
   setVoiceState: (state: VoiceState) => void;
+  setPassiveListening: (passive: boolean) => void;
   addMessage: (role: 'user' | 'assistant', content: string) => void;
   addSubstitution: (original: string, replacement: string) => void;
 }
@@ -29,6 +31,7 @@ export const useCookingStore = create<CookingSession & CookingActions>((set, get
   currentStep: 1,
   isActive: false,
   voiceState: 'idle',
+  passiveListening: false,
   conversationHistory: [],
   substitutionsMade: [],
 
@@ -39,6 +42,7 @@ export const useCookingStore = create<CookingSession & CookingActions>((set, get
       currentStep: 1,
       isActive: true,
       voiceState: 'idle',
+      passiveListening: false,
       conversationHistory: [],
       substitutionsMade: [],
     }),
@@ -49,6 +53,7 @@ export const useCookingStore = create<CookingSession & CookingActions>((set, get
       currentStep: 1,
       isActive: false,
       voiceState: 'idle',
+      passiveListening: false,
       conversationHistory: [],
       substitutionsMade: [],
     }),
@@ -70,6 +75,7 @@ export const useCookingStore = create<CookingSession & CookingActions>((set, get
   },
 
   setVoiceState: (voiceState) => set({ voiceState }),
+  setPassiveListening: (passiveListening) => set({ passiveListening }),
 
   addMessage: (role, content) =>
     set((state) => ({

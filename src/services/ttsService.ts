@@ -45,21 +45,28 @@ const MAX_SPEAKING_RATE = 2.0;
 /**
  * Post-playback cooldown period. After TTS stops, the microphone may still
  * pick up residual assistant audio for a short window. During this cooldown
- * window, the voice hook should suppress low-confidence (interim) transcripts
- * that look like echo rather than genuine user speech.
+ * window, the voice hook should suppress all transcripts that look like echo
+ * rather than genuine user speech.
  */
-const POST_PLAYBACK_COOLDOWN_MS = 900;
+const POST_PLAYBACK_COOLDOWN_MS = 1100;
+
+/**
+ * Secondary settling window after the main cooldown expires. During this
+ * period, transcripts that closely match the assistant's last reply are
+ * still suppressed (echo can arrive slightly late on some devices).
+ */
+export const POST_COOLDOWN_SETTLING_MS = 400;
 
 const DEFAULT_SETTINGS: TtsVoiceSettings = {
-  voiceName: 'Lily',
+  voiceName: 'Dennis',
   languageCode: 'en-US',
   speakingRate: TARGET_SPEAKING_RATE,
   pitch: 0,
 };
 
 export const DEFAULT_TTS_VOICE_OPTIONS: TtsVoiceOption[] = [
-  { name: 'Lily', languageCodes: ['en-US'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
   { name: 'Dennis', languageCodes: ['en-US'], ssmlGender: 'MALE', naturalSampleRateHertz: 24000 },
+  { name: 'Deborah', languageCodes: ['en-US'], ssmlGender: 'FEMALE', naturalSampleRateHertz: 24000 },
 ];
 
 let queue: string[] = [];
@@ -464,4 +471,12 @@ export function isInPlaybackCooldown(): boolean {
  */
 export function getPlaybackCooldownUntil(): number {
   return playbackCooldownUntil;
+}
+
+/**
+ * Returns the number of milliseconds remaining in the post-playback cooldown,
+ * or 0 if the cooldown has already expired.
+ */
+export function getPlaybackCooldownRemainingMs(): number {
+  return Math.max(0, playbackCooldownUntil - Date.now());
 }

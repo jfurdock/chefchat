@@ -1,8 +1,11 @@
 import { requestInworldCookingReply } from "@/src/services/chatService";
 import {
+	getPlaybackCooldownRemainingMs,
+	getPlaybackCooldownUntil,
 	interruptAndSpeak,
 	isInPlaybackCooldown,
 	isSpeaking,
+	POST_COOLDOWN_SETTLING_MS,
 	stopSpeaking,
 } from "@/src/services/ttsService";
 import { playListeningPing } from "@/src/services/uiSoundService";
@@ -18,10 +21,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const INTERIM_COMMIT_DELAY_MS = 550;
 const SHORT_UTTERANCE_COMMIT_DELAY_MS = 280;
 const MEDIUM_UTTERANCE_COMMIT_DELAY_MS = 420;
-const SPEECH_END_COMMIT_DELAY_MS = 200;
+const SPEECH_END_COMMIT_DELAY_MS = 2000;
 const BARGE_IN_INTERIM_CONFIRM_WINDOW_MS = 1200;
-const INACTIVITY_COMMIT_DELAY_MS = 1000;
+const INACTIVITY_COMMIT_DELAY_MS = 2000;
 const LISTENING_POST_PING_GUARD_MS = 140;
+const SILENCE_PASSIVE_TIMEOUT_MS = 3000;
 
 /**
  * If isRespondingRef stays true longer than this, force-reset it to prevent
@@ -147,13 +151,30 @@ function hasWakePhrase(value: string): boolean {
 	return /\b(?:(?:hey|uh|um|ok|okay)\s+)?chef(?:\s*chat)?\b/.test(normalized);
 }
 
+function stripLeadingWakePhrase(value: string): string {
+	if (!value) return "";
+	return value
+		.trim()
+		.replace(
+			/^(?:(?:hey|uh|um|ok|okay)\s+)?chef(?:\s*chat)?(?:[\s,:;.!?-]+|$)/i,
+			"",
+		)
+		.trim();
+}
+
+function sanitizeTranscriptForCommit(value: string): string {
+	return stripLeadingWakePhrase(value).replace(/\s+/g, " ").trim();
+}
+
 function getCommitDelayMs(transcript: string): number {
 	const normalized = normalizeText(transcript);
-	if (!normalized) return INTERIM_COMMIT_DELAY_MS;
-	const wordCount = normalized.split(" ").filter(Boolean).length;
-	if (wordCount <= 3) return SHORT_UTTERANCE_COMMIT_DELAY_MS;
-	if (wordCount <= 8) return MEDIUM_UTTERANCE_COMMIT_DELAY_MS;
-	return INTERIM_COMMIT_DELAY_MS;
+	if (!normalized) return INACTIVITY_COMMIT_DELAY_MS;
+	return Math.max(
+		INACTIVITY_COMMIT_DELAY_MS,
+		INTERIM_COMMIT_DELAY_MS,
+		SHORT_UTTERANCE_COMMIT_DELAY_MS,
+		MEDIUM_UTTERANCE_COMMIT_DELAY_MS,
+	);
 }
 
 function isLikelyAssistantEcho(
@@ -907,7 +928,8 @@ function primaryTranscript(event: ExpoSpeechRecognitionResultEvent): string {
 }
 
 export function useVoice() {
-	const { voiceState, setVoiceState, addMessage } = useCookingStore();
+	const { voiceState, setVoiceState, addMessage, setPassiveListening } =
+		useCookingStore();
 
 	const [permissionGranted, setPermissionGranted] = useState(false);
 	const [isListening, setIsListening] = useState(false);
@@ -944,6 +966,10 @@ export function useVoice() {
 	const lastTranscriptSnapshotRef = useRef("");
 	const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const listeningCueReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 	const lastVoiceStateRef = useRef(voiceState);
 	const listeningCueInProgressRef = useRef(false);
 	const listeningBlockedUntilRef = useRef(0);
@@ -958,6 +984,18 @@ export function useVoice() {
 		if (!inactivityTimerRef.current) return;
 		clearTimeout(inactivityTimerRef.current);
 		inactivityTimerRef.current = null;
+	}, []);
+
+	const clearSilenceTimer = useCallback(() => {
+		if (!silenceTimerRef.current) return;
+		clearTimeout(silenceTimerRef.current);
+		silenceTimerRef.current = null;
+	}, []);
+
+	const clearListeningCueReleaseTimer = useCallback(() => {
+		if (!listeningCueReleaseTimerRef.current) return;
+		clearTimeout(listeningCueReleaseTimerRef.current);
+		listeningCueReleaseTimerRef.current = null;
 	}, []);
 
 	const trackAssistantReply = useCallback((text: string) => {
@@ -1014,6 +1052,7 @@ export function useVoice() {
 			setTranscriptText(text);
 			addMessage("user", text);
 			setVoiceState("processing");
+			setPassiveListening(false);
 
 			let shouldStopLoop = false;
 
@@ -1136,6 +1175,7 @@ export function useVoice() {
 				}
 				await stopSpeaking(true);
 				setVoiceState("idle");
+				setPassiveListening(false);
 				return;
 			}
 
@@ -1149,6 +1189,7 @@ export function useVoice() {
 			addMessage,
 			clearCommitTimer,
 			clearInactivityTimer,
+			setPassiveListening,
 			setVoiceState,
 			trackAssistantReply,
 		],
@@ -1157,11 +1198,13 @@ export function useVoice() {
 	const commitBufferedTranscript = useCallback(async () => {
 		clearCommitTimer();
 		clearInactivityTimer();
-		const text = latestTranscriptRef.current.trim();
-		if (!text) return;
+		const rawText = latestTranscriptRef.current.trim();
+		if (!rawText) return;
 		latestTranscriptRef.current = "";
 		lastTranscriptSnapshotRef.current = "";
 		bargeInKeywordRef.current = "";
+		const text = sanitizeTranscriptForCommit(rawText);
+		if (!text) return;
 		await processUtterance(text);
 	}, [clearCommitTimer, clearInactivityTimer, processUtterance]);
 
@@ -1220,7 +1263,10 @@ export function useVoice() {
 		lastTranscriptSnapshotRef.current = "";
 		clearCommitTimer();
 		clearInactivityTimer();
+		clearSilenceTimer();
+		clearListeningCueReleaseTimer();
 		setIsListening(false);
+		setPassiveListening(false);
 
 		try {
 			ExpoSpeechRecognitionModule.abort();
@@ -1231,7 +1277,13 @@ export function useVoice() {
 				// no-op
 			}
 		}
-	}, [clearCommitTimer, clearInactivityTimer]);
+	}, [
+		clearCommitTimer,
+		clearInactivityTimer,
+		clearListeningCueReleaseTimer,
+		clearSilenceTimer,
+		setPassiveListening,
+	]);
 
 	const stopVoiceLoop = useCallback(async () => {
 		loopActiveRef.current = false;
@@ -1249,11 +1301,22 @@ export function useVoice() {
 		respondingStartedAtRef.current = 0;
 		clearCommitTimer();
 		clearInactivityTimer();
+		clearSilenceTimer();
+		clearListeningCueReleaseTimer();
 		stopRecognition();
 		assistantSpeakingRef.current = false;
 		await stopSpeaking(true);
 		setVoiceState("idle");
-	}, [clearCommitTimer, clearInactivityTimer, setVoiceState, stopRecognition]);
+		setPassiveListening(false);
+	}, [
+		clearCommitTimer,
+		clearInactivityTimer,
+		clearListeningCueReleaseTimer,
+		clearSilenceTimer,
+		setPassiveListening,
+		setVoiceState,
+		stopRecognition,
+	]);
 
 	const announceCurrentStep = useCallback(async () => {
 		if (!loopActiveRef.current) return;
@@ -1278,6 +1341,7 @@ export function useVoice() {
 			trackAssistantReply(message);
 			assistantSpeakingRef.current = true;
 			setVoiceState("speaking");
+			setPassiveListening(false);
 			await interruptAndSpeak(message);
 		} catch (speakError: any) {
 			setError(speakError?.message || "TTS playback failed");
@@ -1287,7 +1351,7 @@ export function useVoice() {
 				setVoiceState("listening");
 			}
 		}
-	}, [addMessage, setVoiceState, trackAssistantReply]);
+	}, [addMessage, setPassiveListening, setVoiceState, trackAssistantReply]);
 
 	const requestPermission = useCallback(async () => {
 		const response =
@@ -1308,6 +1372,7 @@ export function useVoice() {
 
 		loopActiveRef.current = true;
 		setIsVoiceLoopActive(true);
+		setPassiveListening(false);
 		latestTranscriptRef.current = "";
 		lastTranscriptSnapshotRef.current = "";
 		bargeInKeywordRef.current = "";
@@ -1337,6 +1402,7 @@ export function useVoice() {
 			try {
 				assistantSpeakingRef.current = true;
 				setVoiceState("speaking");
+				setPassiveListening(false);
 				await interruptAndSpeak(intro);
 			} catch (speakError: any) {
 				setError(speakError?.message || "TTS playback failed");
@@ -1354,6 +1420,7 @@ export function useVoice() {
 	}, [
 		addMessage,
 		requestPermission,
+		setPassiveListening,
 		setVoiceState,
 		startRecognition,
 		trackAssistantReply,
@@ -1363,8 +1430,9 @@ export function useVoice() {
 		if (!loopActiveRef.current) return;
 		await interruptAndSpeak("");
 		assistantSpeakingRef.current = false;
+		setPassiveListening(false);
 		setVoiceState("listening");
-	}, [setVoiceState]);
+	}, [setPassiveListening, setVoiceState]);
 
 	const toggleVoiceLoop = useCallback(async () => {
 		if (loopActiveRef.current) {
@@ -1415,6 +1483,8 @@ export function useVoice() {
 			"speechstart",
 			() => {
 				if (!loopActiveRef.current) return;
+				clearSilenceTimer();
+				setPassiveListening(false);
 				if (!assistantSpeakingRef.current && !isRespondingRef.current) {
 					setVoiceState("listening");
 				}
@@ -1458,12 +1528,11 @@ export function useVoice() {
 
 				// ── Post-playback cooldown: suppress likely echo after TTS stops ──
 				// Even after stopSpeaking(), the mic may still pick up residual audio
-				// for a short window. Suppress interim transcripts during this period
-				// unless they contain an explicit user command.
+				// for a short window. Suppress ALL transcripts (interim AND final)
+				// during this period unless they contain an explicit user command.
 				if (
 					!assistantSpeakingRef.current &&
-					isInPlaybackCooldown() &&
-					!event.isFinal
+					isInPlaybackCooldown()
 				) {
 					const cooldownTokens = tokenize(transcript);
 					const hasExplicitCommand = cooldownTokens.some((t) =>
@@ -1471,6 +1540,34 @@ export function useVoice() {
 					);
 					if (!hasExplicitCommand) {
 						return;
+					}
+				}
+
+				// ── Post-cooldown settling: catch late-arriving echo ──
+				// After the main cooldown expires, echo can still trickle in on some
+				// devices. For a short settling window, suppress transcripts that
+				// closely match the assistant's last reply.
+				const cooldownRemainingMs = getPlaybackCooldownRemainingMs();
+				if (!assistantSpeakingRef.current && cooldownRemainingMs === 0) {
+					const cooldownEndedAt = getPlaybackCooldownUntil();
+					const msSinceCooldownEnded = Date.now() - cooldownEndedAt;
+					if (
+						cooldownEndedAt > 0 &&
+						msSinceCooldownEnded < POST_COOLDOWN_SETTLING_MS
+					) {
+						const isEchoLike =
+							isLikelyAssistantEcho(
+								transcript,
+								currentAssistantReplyRef.current,
+							) ||
+							isLikelyAssistantPlaybackEcho(
+								transcript,
+								currentAssistantReplyRef.current,
+								assistantReplyHistoryRef.current,
+							);
+						if (isEchoLike) {
+							return;
+						}
 					}
 				}
 
@@ -1575,6 +1672,7 @@ export function useVoice() {
 					// to listening so we minimize assistant-audio bleed into STT.
 					assistantSpeakingRef.current = false;
 					immediateStopPromise = stopSpeaking(true).catch(() => {});
+					setPassiveListening(false);
 					setVoiceState("listening");
 				} else if (
 					isInPlaybackCooldown() &&
@@ -1591,20 +1689,23 @@ export function useVoice() {
 					return;
 				}
 
-				void (async () => {
-					if (immediateStopPromise) {
-						await immediateStopPromise;
-					} else {
-						const playing =
-							assistantSpeakingRef.current || (await isSpeaking());
-						if (playing) {
-							await stopSpeaking(true);
-							assistantSpeakingRef.current = false;
-							if (loopActiveRef.current && !isRespondingRef.current) {
-								setVoiceState("listening");
+				clearSilenceTimer();
+				setPassiveListening(false);
+
+					void (async () => {
+						if (immediateStopPromise) {
+							await immediateStopPromise;
+						} else {
+							const playing =
+								assistantSpeakingRef.current || (await isSpeaking());
+							if (playing) {
+								await stopSpeaking(true);
+								assistantSpeakingRef.current = false;
+								if (loopActiveRef.current && !isRespondingRef.current) {
+									setVoiceState("listening");
+								}
 							}
 						}
-					}
 
 					const mergedTranscript = mergeBargeInKeyword(
 						transcript,
@@ -1641,6 +1742,8 @@ export function useVoice() {
 			setIsListening(false);
 			clearCommitTimer();
 			clearInactivityTimer();
+			clearSilenceTimer();
+			setPassiveListening(false);
 
 			if (!loopActiveRef.current) return;
 			if (stopRequestedRef.current || !shouldRestartRecognitionRef.current)
@@ -1666,6 +1769,8 @@ export function useVoice() {
 				recognitionActiveRef.current = false;
 				setIsListening(false);
 				clearInactivityTimer();
+				clearSilenceTimer();
+				setPassiveListening(false);
 
 				if (!stopRequestedRef.current && shouldRestartRecognitionRef.current) {
 					setTimeout(() => {
@@ -1687,7 +1792,9 @@ export function useVoice() {
 	}, [
 		clearCommitTimer,
 		clearInactivityTimer,
+		clearSilenceTimer,
 		commitBufferedTranscript,
+		setPassiveListening,
 		scheduleInactivityCommit,
 		setVoiceState,
 		startRecognition,
@@ -1695,39 +1802,73 @@ export function useVoice() {
 
 	useEffect(() => {
 		const previous = lastVoiceStateRef.current;
+
+		const startPassiveTimer = () => {
+			clearSilenceTimer();
+			silenceTimerRef.current = setTimeout(() => {
+				if (!loopActiveRef.current) return;
+				if (assistantSpeakingRef.current || isRespondingRef.current) return;
+				if (latestTranscriptRef.current.trim()) return;
+				setPassiveListening(true);
+			}, SILENCE_PASSIVE_TIMEOUT_MS);
+		};
+
 		if (
 			voiceState === "listening" &&
 			previous !== "listening" &&
 			loopActiveRef.current
 		) {
+			clearListeningCueReleaseTimer();
 			listeningCueInProgressRef.current = true;
-			listeningBlockedUntilRef.current = Number.POSITIVE_INFINITY;
+			listeningBlockedUntilRef.current =
+				Date.now() + LISTENING_POST_PING_GUARD_MS;
+			listeningCueReleaseTimerRef.current = setTimeout(() => {
+				listeningCueInProgressRef.current = false;
+			}, LISTENING_POST_PING_GUARD_MS);
 			clearCommitTimer();
 			clearInactivityTimer();
+			clearSilenceTimer();
+			setPassiveListening(false);
 			latestTranscriptRef.current = "";
 			lastTranscriptSnapshotRef.current = "";
 			bargeInKeywordRef.current = "";
 			interimBargeCandidateRef.current = null;
 			setTranscriptText("");
 
-			void (async () => {
-				try {
-					await playListeningPing();
-				} finally {
-					listeningCueInProgressRef.current = false;
-					listeningBlockedUntilRef.current =
-						Date.now() + LISTENING_POST_PING_GUARD_MS;
-				}
-			})();
+			if (previous === "speaking") {
+				void playListeningPing({ force: true });
+			}
+			startPassiveTimer();
+		} else if (voiceState !== "listening") {
+			clearListeningCueReleaseTimer();
+			clearSilenceTimer();
+			listeningCueInProgressRef.current = false;
+			listeningBlockedUntilRef.current = 0;
+			setPassiveListening(false);
 		}
 		lastVoiceStateRef.current = voiceState;
-	}, [clearCommitTimer, clearInactivityTimer, voiceState]);
+	}, [
+		clearCommitTimer,
+		clearInactivityTimer,
+		clearListeningCueReleaseTimer,
+		clearSilenceTimer,
+		setPassiveListening,
+		voiceState,
+	]);
 
 	useEffect(() => {
 		return () => {
+			clearListeningCueReleaseTimer();
+			clearSilenceTimer();
+			setPassiveListening(false);
 			void stopVoiceLoop();
 		};
-	}, [stopVoiceLoop]);
+	}, [
+		clearListeningCueReleaseTimer,
+		clearSilenceTimer,
+		setPassiveListening,
+		stopVoiceLoop,
+	]);
 
 	return {
 		voiceState,

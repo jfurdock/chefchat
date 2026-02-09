@@ -13,13 +13,15 @@ import Colors from '@/constants/Colors';
 
 type VoiceIndicatorProps = {
   voiceState: VoiceState;
+  passiveListening?: boolean;
   transcriptText?: string;
   assistantText?: string;
   error?: string | null;
   onPress: () => void;
 };
 
-function getStatusLabel(state: VoiceState) {
+function getStatusLabel(state: VoiceState, passiveListening: boolean) {
+  if (state === 'listening' && passiveListening) return 'Tap or speak';
   if (state === 'listening') return 'Listening...';
   if (state === 'processing') return 'Processing...';
   if (state === 'speaking') return 'Speaking...';
@@ -28,6 +30,7 @@ function getStatusLabel(state: VoiceState) {
 
 export default function VoiceIndicator({
   voiceState,
+  passiveListening = false,
   transcriptText,
   assistantText,
   error,
@@ -37,7 +40,7 @@ export default function VoiceIndicator({
   const bars = useRef([0, 1, 2].map(() => new Animated.Value(0.2))).current;
 
   useEffect(() => {
-    if (voiceState !== 'listening') {
+    if (voiceState !== 'listening' || passiveListening) {
       pulse.stopAnimation();
       pulse.setValue(1);
       return;
@@ -62,7 +65,7 @@ export default function VoiceIndicator({
 
     loop.start();
     return () => loop.stop();
-  }, [pulse, voiceState]);
+  }, [passiveListening, pulse, voiceState]);
 
   useEffect(() => {
     if (voiceState !== 'speaking') {
@@ -101,11 +104,12 @@ export default function VoiceIndicator({
     () => [
       styles.circle,
       voiceState === 'listening' && styles.circleListening,
+      voiceState === 'listening' && passiveListening && styles.circlePassive,
       voiceState === 'speaking' && styles.circleSpeaking,
       voiceState === 'processing' && styles.circleProcessing,
-      { transform: [{ scale: pulse }] },
+      { transform: [{ scale: passiveListening ? 1 : pulse }] },
     ],
-    [voiceState, pulse]
+    [passiveListening, voiceState, pulse]
   );
 
   return (
@@ -113,14 +117,20 @@ export default function VoiceIndicator({
       <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
         <Animated.View style={circleStyle}>
           <Ionicons
-            name={voiceState === 'listening' ? 'mic' : 'mic-outline'}
+            name={voiceState === 'listening' && !passiveListening ? 'mic' : 'mic-outline'}
             size={30}
-            color={voiceState === 'idle' ? Colors.light.textSecondary : Colors.brand.cream}
+            color={
+              voiceState === 'idle'
+                ? Colors.light.textSecondary
+                : passiveListening && voiceState === 'listening'
+                  ? Colors.brand.sageDark
+                  : Colors.brand.cream
+            }
           />
         </Animated.View>
       </TouchableOpacity>
 
-      <Text style={styles.status}>{getStatusLabel(voiceState)}</Text>
+      <Text style={styles.status}>{getStatusLabel(voiceState, passiveListening)}</Text>
 
       {voiceState === 'speaking' && (
         <View style={styles.waveRow}>
@@ -164,6 +174,10 @@ const styles = StyleSheet.create({
   },
   circleListening: {
     backgroundColor: Colors.brand.sage,
+    borderColor: Colors.brand.sage,
+  },
+  circlePassive: {
+    backgroundColor: Colors.light.backgroundSecondary,
     borderColor: Colors.brand.sage,
   },
   circleProcessing: {

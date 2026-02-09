@@ -3,7 +3,9 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { doc, getDoc, getFirestore } from '@react-native-firebase/firestore';
 import { useAuthListener, useAuth } from '@/src/hooks/useAuth';
+import { useAuthStore } from '@/src/stores/authStore';
 import Colors from '@/constants/Colors';
 import 'react-native-reanimated';
 
@@ -12,31 +14,66 @@ export { ErrorBoundary } from 'expo-router';
 SplashScreen.preventAutoHideAsync();
 
 function AuthGate() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
+  const setOnboardingCompleted = useAuthStore((s) => s.setOnboardingCompleted);
   const segments = useSegments();
   const router = useRouter();
 
+  // Fetch onboarding status when user changes
+  useEffect(() => {
+    if (!user) {
+      setOnboardingCompleted(null);
+      return;
+    }
+
+    let mounted = true;
+    const fetchProfile = async () => {
+      try {
+        const snap = await getDoc(doc(getFirestore(), 'users', user.uid));
+        if (!mounted) return;
+        const data = snap.data();
+        setOnboardingCompleted(data?.onboardingCompleted === true);
+      } catch {
+        if (mounted) setOnboardingCompleted(false);
+      }
+    };
+
+    void fetchProfile();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.uid]);
+
   useEffect(() => {
     if (isLoading) return;
+    if (isAuthenticated && onboardingCompleted === null) return; // still loading profile
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inOnboardingGroup = segments[0] === '(onboarding)';
 
     if (!isAuthenticated && !inAuthGroup) {
-      // User is not signed in — redirect to login
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
-      // User is signed in but on auth screen — redirect to main
+      if (onboardingCompleted === false) {
+        router.replace('/(onboarding)/welcome');
+      } else {
+        router.replace('/(main)');
+      }
+    } else if (isAuthenticated && !inOnboardingGroup && onboardingCompleted === false) {
+      router.replace('/(onboarding)/welcome');
+    } else if (isAuthenticated && inOnboardingGroup && onboardingCompleted === true) {
       router.replace('/(main)');
     }
-  }, [isAuthenticated, isLoading, segments]);
+  }, [isAuthenticated, isLoading, onboardingCompleted, segments]);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && (onboardingCompleted !== null || !isAuthenticated)) {
       SplashScreen.hideAsync();
     }
-  }, [isLoading]);
+  }, [isLoading, onboardingCompleted, isAuthenticated]);
 
-  if (isLoading) {
+  if (isLoading || (isAuthenticated && onboardingCompleted === null)) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={Colors.brand.sageDark} />
@@ -48,7 +85,6 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
-  // Start listening to auth state
   useAuthListener();
 
   return (

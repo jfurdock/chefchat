@@ -67,6 +67,13 @@ export default function MainLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="dietary-preferences"
+        options={{
+          href: null,
+          title: 'Dietary Preferences',
+        }}
+      />
       {/* Hide the recipe detail routes from the tab bar */}
       <Tabs.Screen
         name="recipe"

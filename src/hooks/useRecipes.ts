@@ -7,7 +7,36 @@ import {
   getFavorites,
   toggleFavorite as toggleFavoriteService,
 } from '../services/recipeService';
+import { subscribeRecipeDataChanges } from '../services/recipeDataSync';
 import { useAuth } from './useAuth';
+
+let recipesCache: Recipe[] | null = null;
+const recipeByIdCache = new Map<string, Recipe>();
+const favoritesCacheByUser = new Map<string, Recipe[]>();
+const favoriteIdsCacheByUser = new Map<string, Set<string>>();
+
+function updateRecipeCaches(recipes: Recipe[]) {
+  recipesCache = recipes;
+  recipeByIdCache.clear();
+  recipes.forEach((recipe) => {
+    recipeByIdCache.set(recipe.id, recipe);
+  });
+}
+
+function mergeRecipeIntoCache(recipe: Recipe | null) {
+  if (!recipe) return;
+  recipeByIdCache.set(recipe.id, recipe);
+  if (recipesCache) {
+    const next = [...recipesCache];
+    const index = next.findIndex((item) => item.id === recipe.id);
+    if (index >= 0) {
+      next[index] = recipe;
+    } else {
+      next.push(recipe);
+    }
+    recipesCache = next;
+  }
+}
 
 /**
  * Hook for fetching and filtering recipes.
@@ -17,16 +46,20 @@ export function useRecipes(filters?: {
   tag?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
 }) {
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [recipes, setRecipes] = useState<Recipe[]>(() => recipesCache ?? []);
+  const [loading, setLoading] = useState(() => !recipesCache);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRecipes = useCallback(async () => {
+  const fetchRecipes = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = !!options?.silent;
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading((recipesCache ?? []).length === 0);
+      }
       setError(null);
       const data = await getRecipes(filters);
       setRecipes(data);
+      updateRecipeCaches(data);
     } catch (err: any) {
       console.error('Failed to load recipes from Firestore:', err);
       const code = err?.code ? `${err.code}: ` : '';
@@ -37,7 +70,13 @@ export function useRecipes(filters?: {
   }, [filters?.cuisine, filters?.tag, filters?.difficulty]);
 
   useEffect(() => {
-    fetchRecipes();
+    void fetchRecipes({ silent: !!recipesCache });
+  }, [fetchRecipes]);
+
+  useEffect(() => {
+    return subscribeRecipeDataChanges(() => {
+      void fetchRecipes({ silent: true });
+    });
   }, [fetchRecipes]);
 
   return { recipes, loading, error, refetch: fetchRecipes };
@@ -47,34 +86,51 @@ export function useRecipes(filters?: {
  * Hook for fetching a single recipe.
  */
 export function useRecipe(recipeId: string) {
-  const [recipe, setRecipe] = useState<Recipe | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [recipe, setRecipe] = useState<Recipe | null>(() => {
+    if (!recipeId) return null;
+    return recipeByIdCache.get(recipeId) || null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (!recipeId) return false;
+    return !recipeByIdCache.has(recipeId);
+  });
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchRecipe = useCallback(async (options?: { silent?: boolean }) => {
     if (!recipeId) return;
-
-    let cancelled = false;
-
-    async function fetch() {
-      try {
-        setLoading(true);
-        const data = await getRecipeById(recipeId);
-        if (!cancelled) setRecipe(data);
-      } catch (err: any) {
-        if (!cancelled) setError(err.message);
-      } finally {
-        if (!cancelled) setLoading(false);
+    const silent = !!options?.silent;
+    const cached = recipeByIdCache.get(recipeId) || null;
+    if (cached) {
+      setRecipe(cached);
+      if (!silent) {
+        setLoading(false);
       }
+    } else if (!silent) {
+      setLoading(true);
     }
 
-    fetch();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const data = await getRecipeById(recipeId);
+      setRecipe(data);
+      mergeRecipeIntoCache(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load recipe');
+    } finally {
+      setLoading(false);
+    }
   }, [recipeId]);
 
-  return { recipe, loading, error };
+  useEffect(() => {
+    void fetchRecipe({ silent: true });
+  }, [fetchRecipe]);
+
+  useEffect(() => {
+    return subscribeRecipeDataChanges(() => {
+      void fetchRecipe({ silent: true });
+    });
+  }, [fetchRecipe]);
+
+  return { recipe, loading, error, refetch: fetchRecipe };
 }
 
 /**
@@ -110,17 +166,39 @@ export function useRecipeSearch() {
  */
 export function useFavorites() {
   const { user } = useAuth();
-  const [favorites, setFavorites] = useState<Recipe[]>([]);
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
+  const [favorites, setFavorites] = useState<Recipe[]>(() => {
+    if (!user?.uid) return [];
+    return favoritesCacheByUser.get(user.uid) ?? [];
+  });
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => {
+    if (!user?.uid) return new Set();
+    return favoriteIdsCacheByUser.get(user.uid) ?? new Set();
+  });
+  const [loading, setLoading] = useState(() => {
+    if (!user?.uid) return false;
+    return !favoritesCacheByUser.has(user.uid);
+  });
 
-  const fetchFavorites = useCallback(async () => {
+  useEffect(() => {
+    if (user?.uid) return;
+    setFavorites([]);
+    setFavoriteIds(new Set());
+    setLoading(false);
+  }, [user?.uid]);
+
+  const fetchFavorites = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) return;
+    const silent = !!options?.silent;
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading((favoritesCacheByUser.get(user.uid)?.length ?? 0) === 0);
+      }
       const data = await getFavorites(user.uid);
       setFavorites(data);
-      setFavoriteIds(new Set(data.map((r) => r.id)));
+      const ids = new Set(data.map((r) => r.id));
+      setFavoriteIds(ids);
+      favoritesCacheByUser.set(user.uid, data);
+      favoriteIdsCacheByUser.set(user.uid, ids);
     } catch (err) {
       console.error('Failed to fetch favorites:', err);
     } finally {
@@ -129,7 +207,13 @@ export function useFavorites() {
   }, [user?.uid]);
 
   useEffect(() => {
-    fetchFavorites();
+    void fetchFavorites({ silent: !!user?.uid && favoritesCacheByUser.has(user.uid) });
+  }, [fetchFavorites]);
+
+  useEffect(() => {
+    return subscribeRecipeDataChanges(() => {
+      void fetchFavorites({ silent: true });
+    });
   }, [fetchFavorites]);
 
   const toggleFavorite = useCallback(
@@ -148,7 +232,7 @@ export function useFavorites() {
           return next;
         });
         // Refetch full list
-        fetchFavorites();
+        void fetchFavorites({ silent: true });
       } catch (err) {
         console.error('Failed to toggle favorite:', err);
       }

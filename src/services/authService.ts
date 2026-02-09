@@ -1,60 +1,192 @@
 import {
-  createUserWithEmailAndPassword,
+  AppleAuthProvider,
   FirebaseAuthTypes,
   getAuth,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
+  updateProfile as firebaseUpdateProfile,
 } from '@react-native-firebase/auth';
 import {
   collection,
   doc,
-  FirebaseFirestoreTypes,
+  getDoc,
   getFirestore,
   serverTimestamp,
   setDoc,
+  Timestamp,
+  updateDoc,
 } from '@react-native-firebase/firestore';
+import { Platform } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { UserProfile } from '../types/recipe';
 
-/**
- * Create a new user with email/password and initialize their Firestore profile.
- */
-export async function signUp(
-  email: string,
-  password: string,
-  displayName: string
-): Promise<FirebaseAuthTypes.UserCredential> {
-  const auth = getAuth();
-  const db = getFirestore();
-  const credential = await createUserWithEmailAndPassword(auth, email, password);
+const FREE_TRIAL_DAYS = 7;
 
-  // Update the Firebase Auth display name
-  await credential.user.updateProfile({ displayName });
-
-  // Create the Firestore user profile
-  const userProfile: Omit<UserProfile, 'createdAt'> & { createdAt: FirebaseFirestoreTypes.FieldValue } = {
-    uid: credential.user.uid,
-    displayName,
-    email,
-    favorites: [],
-    dietaryPreferences: [],
-    cookingHistory: [],
-    createdAt: serverTimestamp(),
-  };
-
-  await setDoc(doc(collection(db, 'users'), credential.user.uid), userProfile);
-
-  return credential;
+function normalizeFirstName(value?: string | null): string {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return '';
+  return trimmed.split(/\s+/)[0];
 }
 
-/**
- * Sign in with email/password.
- */
-export async function signIn(
-  email: string,
+function normalizeEmail(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    throw new Error('Please enter an email address.');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    throw new Error('Please enter a valid email address.');
+  }
+  return trimmed;
+}
+
+function validatePassword(value: string): string {
+  if (!value) {
+    throw new Error('Please enter your password.');
+  }
+  if (value.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
+  }
+  return value;
+}
+
+function fallbackDisplayName(user: FirebaseAuthTypes.User): string {
+  if (user.displayName?.trim()) return user.displayName.trim();
+
+  const emailLocalPart = user.email?.split('@')[0]?.trim();
+  if (emailLocalPart) {
+    const cooked = emailLocalPart.replace(/[._-]+/g, ' ').trim();
+    if (cooked) {
+      const first = cooked.split(/\s+/)[0];
+      return `${first.charAt(0).toUpperCase()}${first.slice(1)}`;
+    }
+  }
+
+  const phone = user.phoneNumber?.replace(/^\+/, '') || '';
+  if (phone.length >= 4) return `Chef ${phone.slice(-4)}`;
+  return 'Chef';
+}
+
+async function ensureUserProfile(
+  user: FirebaseAuthTypes.User,
+  firstName?: string
+): Promise<void> {
+  const db = getFirestore();
+  const userDocRef = doc(collection(db, 'users'), user.uid);
+  const userDocSnap = await getDoc(userDocRef);
+  const preferredFirstName = normalizeFirstName(firstName);
+
+  const normalizedDisplayName =
+    preferredFirstName || user.displayName?.trim() || fallbackDisplayName(user);
+
+  if (!user.displayName && normalizedDisplayName) {
+    await firebaseUpdateProfile(user, { displayName: normalizedDisplayName });
+  }
+
+  if (!userDocSnap.exists()) {
+    const trialEndsAt = Timestamp.fromMillis(
+      Date.now() + FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    const userProfile = {
+      uid: user.uid,
+      displayName: normalizedDisplayName,
+      email: user.email || '',
+      phoneNumber: user.phoneNumber || '',
+      favorites: [],
+      dietaryPreferences: [],
+      cookingHistory: [],
+      skillLevel: null,
+      preferredVoiceName: null,
+      onboardingCompleted: false,
+      subscriptionPlan: 'trial',
+      subscriptionStatus: 'inactive',
+      trialEndsAt,
+      trialStartedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    };
+
+    await setDoc(userDocRef, userProfile, { merge: true });
+    return;
+  }
+
+  const currentData = userDocSnap.data() as Partial<UserProfile> | undefined;
+  const patch: Record<string, unknown> = {};
+
+  if (!currentData?.displayName && normalizedDisplayName) {
+    patch.displayName = normalizedDisplayName;
+  }
+  if (!currentData?.phoneNumber && user.phoneNumber) {
+    patch.phoneNumber = user.phoneNumber;
+  }
+  if (!currentData?.email && user.email) {
+    patch.email = user.email;
+  }
+  if (!currentData?.subscriptionPlan) {
+    patch.subscriptionPlan = 'trial';
+  }
+  if (!currentData?.subscriptionStatus) {
+    patch.subscriptionStatus = 'inactive';
+  }
+  if (!currentData?.trialEndsAt) {
+    patch.trialEndsAt = Timestamp.fromMillis(
+      Date.now() + FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000
+    );
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await updateDoc(userDocRef, patch as any);
+  }
+}
+
+export async function signInWithEmailPassword(
+  rawEmail: string,
   password: string
-): Promise<FirebaseAuthTypes.UserCredential> {
-  return signInWithEmailAndPassword(getAuth(), email, password);
+): Promise<void> {
+  const email = normalizeEmail(rawEmail);
+  if (!password) {
+    throw new Error('Please enter your password.');
+  }
+
+  const credential = await getAuth().signInWithEmailAndPassword(email, password);
+  await ensureUserProfile(credential.user);
+}
+
+export async function signUpWithEmailPassword(
+  rawEmail: string,
+  password: string,
+  firstName?: string
+): Promise<void> {
+  const email = normalizeEmail(rawEmail);
+  const validPassword = validatePassword(password);
+
+  const credential = await getAuth().createUserWithEmailAndPassword(email, validPassword);
+  await ensureUserProfile(credential.user, firstName);
+}
+
+export async function signInWithAppleProvider(): Promise<void> {
+  if (Platform.OS !== 'ios') {
+    throw new Error('Apple Sign In is only available on iOS devices.');
+  }
+
+  const isAppleAuthAvailable = await AppleAuthentication.isAvailableAsync();
+  if (!isAppleAuthAvailable) {
+    throw new Error('Apple Sign In is not available on this device.');
+  }
+
+  const appleCredential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+  });
+
+  const identityToken = appleCredential.identityToken;
+  if (!identityToken) {
+    throw new Error('Apple Sign In did not return an identity token.');
+  }
+
+  const firebaseCredential = AppleAuthProvider.credential(identityToken);
+  const credential = await getAuth().signInWithCredential(firebaseCredential);
+  await ensureUserProfile(credential.user, appleCredential.fullName?.givenName ?? undefined);
 }
 
 /**
@@ -62,13 +194,6 @@ export async function signIn(
  */
 export async function signOut(): Promise<void> {
   return firebaseSignOut(getAuth());
-}
-
-/**
- * Send a password reset email.
- */
-export async function resetPassword(email: string): Promise<void> {
-  return sendPasswordResetEmail(getAuth(), email);
 }
 
 /**

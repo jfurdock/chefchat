@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getApp } from '@react-native-firebase/app';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRecipes, useRecipeSearch, useFavorites } from '@/src/hooks/useRecipes';
 import RecipeCard from '@/src/components/RecipeCard';
 import Colors from '@/constants/Colors';
@@ -85,6 +86,12 @@ export default function HomeScreen() {
       router.push(`/(main)/recipe/${recipe.id}`);
     },
     [router]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch({ silent: true });
+    }, [refetch])
   );
 
   return (

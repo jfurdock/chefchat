@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { doc, getFirestore, updateDoc } from '@react-native-firebase/firestore';
 import { useAuth } from '@/src/hooks/useAuth';
+import { useAuthStore } from '@/src/stores/authStore';
+import { useOnboardingStore } from '@/src/stores/onboardingStore';
 import { signOut } from '@/src/services/authService';
 import {
   DEFAULT_TTS_VOICE_OPTIONS,
@@ -20,6 +24,9 @@ function formatVoiceName(raw: string): string {
 
 export default function ProfileScreen() {
   const { user } = useAuth();
+  const router = useRouter();
+  const setOnboardingCompleted = useAuthStore((s) => s.setOnboardingCompleted);
+  const resetOnboardingStore = useOnboardingStore((s) => s.reset);
   const [voiceSettings, setLocalVoiceSettings] = useState<TtsVoiceSettings | null>(null);
   const [voices, setVoices] = useState<TtsVoiceOption[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
@@ -83,12 +90,44 @@ export default function ProfileScreen() {
         languageCode: voice.languageCodes?.[0] || 'en-US',
       });
       setLocalVoiceSettings(updated);
+      if (user?.uid) {
+        await updateDoc(doc(getFirestore(), 'users', user.uid), {
+          preferredVoiceName: updated.voiceName,
+        });
+      }
       await interruptAndSpeak('Voice updated. I will guide you with this voice while you cook.');
     } catch {
       Alert.alert('Voice Update Failed', 'Could not change voice right now. Please try again.');
     } finally {
       setSavingVoiceName(null);
     }
+  }
+
+  function handleOpenOnboarding() {
+    if (!user?.uid) return;
+
+    Alert.alert(
+      'Open Onboarding',
+      'This will reopen onboarding so you can update your setup preferences.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open',
+          onPress: async () => {
+            try {
+              await updateDoc(doc(getFirestore(), 'users', user.uid), {
+                onboardingCompleted: false,
+              });
+              resetOnboardingStore();
+              setOnboardingCompleted(false);
+              router.replace('/(onboarding)/welcome');
+            } catch {
+              Alert.alert('Could not open onboarding', 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -101,12 +140,15 @@ export default function ProfileScreen() {
           </Text>
         </View>
         <Text style={styles.name}>{user?.displayName || 'Chef'}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+        <Text style={styles.email}>{user?.email || user?.phoneNumber || ''}</Text>
       </View>
 
       {/* Menu items */}
       <View style={styles.menu}>
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/(main)/dietary-preferences')}
+        >
           <Ionicons name="nutrition-outline" size={22} color={Colors.light.text} />
           <Text style={styles.menuText}>Dietary Preferences</Text>
           <Ionicons name="chevron-forward" size={20} color={Colors.light.textSecondary} />
@@ -159,6 +201,11 @@ export default function ProfileScreen() {
           })
         )}
       </View>
+
+      <TouchableOpacity style={styles.reopenOnboardingButton} onPress={handleOpenOnboarding}>
+        <Ionicons name="refresh-outline" size={20} color={Colors.light.text} />
+        <Text style={styles.reopenOnboardingText}>Open Onboarding</Text>
+      </TouchableOpacity>
 
       {/* Sign out */}
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
@@ -243,6 +290,23 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     fontSize: 16,
+    color: Colors.light.text,
+    fontWeight: '600',
+  },
+  reopenOnboardingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 26,
+    paddingVertical: 14,
+    backgroundColor: Colors.light.card,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.light.border,
+    gap: 8,
+  },
+  reopenOnboardingText: {
+    fontSize: 15,
     color: Colors.light.text,
     fontWeight: '600',
   },

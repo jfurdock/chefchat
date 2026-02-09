@@ -1,12 +1,9 @@
 import { create } from 'zustand';
 import { Ingredient, Step } from '../types/recipe';
 
-export type ImportMethod = 'photo' | 'manual' | 'url';
+export type ImportMethod = 'manual' | 'url';
 export type ImportStep =
   | 'method'
-  | 'photo-ingredients'
-  | 'photo-instructions'
-  | 'photo-review'
   | 'manual-title'
   | 'manual-ingredients'
   | 'manual-instructions'

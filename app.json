@@ -14,11 +14,40 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chefchat.app",
+      "usesAppleSignIn": true,
+      "bundleIdentifier": "com.company.chefchat",
+      "appleTeamId": "M2528FKS34",
       "googleServicesFile": "./GoogleService-Info.plist",
+      "entitlements": {
+        "aps-environment": "development",
+        "com.apple.developer.applesignin": [
+          "Default"
+        ]
+      },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ChefChat needs microphone access so you can cook hands-free with voice commands.",
-        "NSSpeechRecognitionUsageDescription": "ChefChat uses speech recognition to understand your cooking questions in real time."
+        "NSSpeechRecognitionUsageDescription": "ChefChat uses speech recognition to understand your cooking questions in real time.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "chefchat",
+              "com.company.chefchat"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "exp+chefchat"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "app-1-277668187996-ios-96552508eef1b74ef0bb99"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -26,7 +55,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#F7F3EE"
       },
-      "package": "com.chefchat.app",
+      "package": "com.company.chefchat",
       "googleServicesFile": "./google-services.json",
       "permissions": ["RECORD_AUDIO"]
     },

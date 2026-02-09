@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions/v1';
 import speech from '@google-cloud/speech';
+import { consumeVoiceCredits, estimateSttCredits } from './voiceQuota';
 
 const speechClient = new speech.SpeechClient();
 
@@ -86,8 +87,14 @@ export const transcribeAudio = functions
           .trim();
 
         if (transcript) {
+          const usage = await consumeVoiceCredits({
+            uid: context.auth.uid,
+            feature: 'stt',
+            amount: estimateSttCredits(payload.audioBase64 || ''),
+          });
           return {
             transcript,
+            usage,
           };
         }
 
@@ -110,7 +117,12 @@ export const transcribeAudio = functions
     // If decode succeeded but speech content was empty, do not fail the request.
     // Some fallback configs can throw even after a successful empty decode.
     if (lastEmptyTranscript) {
-      return { transcript: '' };
+      const usage = await consumeVoiceCredits({
+        uid: context.auth.uid,
+        feature: 'stt',
+        amount: estimateSttCredits(payload.audioBase64 || ''),
+      });
+      return { transcript: '', usage };
     }
 
     const sttMessage = getSpeechErrorMessage(lastError);

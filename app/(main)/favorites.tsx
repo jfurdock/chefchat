@@ -1,15 +1,23 @@
 import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useFavorites } from '@/src/hooks/useRecipes';
 import { useImportStore } from '@/src/stores/importStore';
 import RecipeCard from '@/src/components/RecipeCard';
 import Colors from '@/constants/Colors';
+import { useCallback } from 'react';
 
 export default function FavoritesScreen() {
   const { favorites, loading, toggleFavorite, isFavorite, refetch } = useFavorites();
   const startImport = useImportStore((s) => s.startImport);
   const router = useRouter();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch({ silent: true });
+    }, [refetch])
+  );
 
   const handleImportPress = () => {
     startImport();

@@ -31,6 +31,8 @@ export default function CookingSessionScreen() {
   const {
     currentStep,
     isActive,
+    recipe: sessionRecipe,
+    passiveListening,
     startSession,
     endSession,
     nextStep,
@@ -50,20 +52,43 @@ export default function CookingSessionScreen() {
   } = useVoice();
   const chatScrollRef = useRef<ScrollView>(null);
 
+  // Always start a fresh cooking session per route recipe.
+  useEffect(() => {
+    autoVoiceStartedRef.current = false;
+    lastAnnouncedStepRef.current = null;
+    void stopVoiceLoop();
+    endSession();
+  }, [endSession, id, stopVoiceLoop]);
+
   // Start the cooking session when recipe loads
   useEffect(() => {
-    if (recipe && !isActive) {
+    if (recipe && (!isActive || recipe.id !== sessionRecipe?.id)) {
       startSession(recipe);
     }
-  }, [recipe]);
+  }, [isActive, recipe, sessionRecipe?.id, startSession]);
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      autoVoiceStartedRef.current = false;
+      lastAnnouncedStepRef.current = null;
+      void stopVoiceLoop();
+      endSession();
+    };
+  }, [endSession, stopVoiceLoop]);
 
   // Start voice mode automatically once per cooking session.
   useEffect(() => {
-    if (recipe && isActive && !autoVoiceStartedRef.current) {
+    if (
+      recipe &&
+      isActive &&
+      sessionRecipe?.id === recipe.id &&
+      !autoVoiceStartedRef.current
+    ) {
       autoVoiceStartedRef.current = true;
       void startVoiceLoop();
     }
-  }, [recipe, isActive, startVoiceLoop]);
+  }, [isActive, recipe, sessionRecipe?.id, startVoiceLoop]);
 
   useEffect(() => {
     if (!isActive) {
@@ -176,6 +201,7 @@ export default function CookingSessionScreen() {
 
         <VoiceIndicator
           voiceState={voiceState}
+          passiveListening={passiveListening}
           error={voiceError}
           onPress={() => {
             if (voiceState === 'speaking') {

@@ -55,15 +55,23 @@ export interface CookingRecord {
 export interface UserProfile {
   uid: string;
   displayName: string;
-  email: string;
+  email?: string;
+  phoneNumber?: string;
   favorites: string[];
   dietaryPreferences: string[];
   cookingHistory: CookingRecord[];
+  skillLevel: 'beginner' | 'intermediate' | 'advanced' | null;
+  preferredVoiceName?: string | null;
+  onboardingCompleted: boolean;
+  subscriptionPlan?: 'free' | 'trial' | 'pro';
+  subscriptionStatus?: 'inactive' | 'trialing' | 'active' | 'canceled';
+  trialEndsAt?: FirebaseFirestoreTypes.Timestamp;
+  trialStartedAt?: FirebaseFirestoreTypes.Timestamp;
   createdAt: FirebaseFirestoreTypes.Timestamp;
 }
 
 export interface UserRecipe extends Recipe {
   createdBy: string;
-  importMethod: 'photo' | 'manual' | 'url';
+  importMethod: 'manual' | 'url';
   sourcePhotos?: string[];
 }

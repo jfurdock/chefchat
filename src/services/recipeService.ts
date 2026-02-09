@@ -17,6 +17,7 @@ import {
   where,
 } from '@react-native-firebase/firestore';
 import { Recipe, UserProfile } from '../types/recipe';
+import { notifyRecipeDataChanged } from './recipeDataSync';
 
 type RecipeDocument = Omit<Recipe, 'id'>;
 type PartialRecipeDocument = Partial<RecipeDocument> & Record<string, unknown>;
@@ -155,6 +156,9 @@ export async function toggleFavorite(userId: string, recipeId: string): Promise<
       favorites: [],
       dietaryPreferences: [],
       cookingHistory: [],
+      skillLevel: null,
+      preferredVoiceName: null,
+      onboardingCompleted: false,
       createdAt: serverTimestamp(),
     };
     await setDoc(userDoc, profileSeed, { merge: true });
@@ -164,7 +168,7 @@ export async function toggleFavorite(userId: string, recipeId: string): Promise<
     };
   }
 
-  const favorites: string[] = userData.favorites || [];
+  const favorites: string[] = userData?.favorites || [];
   const isFavorite = favorites.includes(recipeId);
 
   if (isFavorite) {
@@ -176,6 +180,8 @@ export async function toggleFavorite(userId: string, recipeId: string): Promise<
       favorites: arrayUnion(recipeId),
     });
   }
+
+  notifyRecipeDataChanged();
 
   return !isFavorite; // returns new favorite status
 }

@@ -89,6 +89,31 @@ function buildPrompt({ userMessage, recipe, currentStep, conversationHistory }: 
   currentStep: number;
   conversationHistory?: HistoryMessage[];
 }): string {
+  const hasRecipeContext =
+    !!recipe &&
+    (!!recipe.title ||
+      (Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0) ||
+      (Array.isArray(recipe.steps) && recipe.steps.length > 0));
+
+  if (!hasRecipeContext) {
+    return [
+      'You are ChefChat, a friendly and concise cooking assistant.',
+      'The user can ask any standalone cooking question (timing, temperatures, substitutions, techniques, food safety).',
+      '',
+      'Rules:',
+      '- Keep responses to 1-3 sentences unless the user asks for a detailed breakdown.',
+      '- Give practical cooking advice with specific temperatures/times when relevant.',
+      '- If there are multiple good options, give the best default first.',
+      '- If critical context is missing, ask one short clarifying question.',
+      '',
+      'No active recipe context is currently available.',
+      '',
+      `Conversation so far:\n${summarizeHistory(conversationHistory)}`,
+      '',
+      `Latest user request: ${userMessage}`,
+    ].join('\n');
+  }
+
   return [
     'You are ChefChat, a friendly and concise voice cooking assistant.',
     'The user is cooking hands-free and needs short spoken responses.',

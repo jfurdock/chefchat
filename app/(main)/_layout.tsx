@@ -1,6 +1,9 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Image, StyleSheet, View } from 'react-native';
 import Colors from '@/constants/Colors';
+
+const chefHatIcon = require('@/assets/images/chefhat-icon.png');
 
 export default function MainLayout() {
   return (
@@ -11,6 +14,9 @@ export default function MainLayout() {
         tabBarStyle: {
           borderTopColor: Colors.light.border,
           backgroundColor: Colors.brand.cream,
+          height: 74,
+          paddingTop: 6,
+          paddingBottom: 8,
         },
         headerStyle: {
           backgroundColor: Colors.brand.cream,
@@ -41,20 +47,32 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="assistant"
+        options={{
+          title: 'ChefChat',
+          headerTitle: 'ChefChat Assistant',
+          tabBarLabel: '',
+          tabBarIconStyle: {
+            marginTop: -26,
+          },
+          tabBarIcon: ({ focused }) => (
+            <View
+              style={[
+                styles.assistantButtonWrap,
+                focused && styles.assistantButtonWrapFocused,
+              ]}
+            >
+              <Image source={chefHatIcon} style={styles.assistantButtonIcon} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="shopping"
         options={{
           title: 'Shopping',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cart-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="menu"
-        options={{
-          title: 'Menu',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
           ),
         }}
       />
@@ -65,6 +83,13 @@ export default function MainLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="menu"
+        options={{
+          href: null,
+          title: 'Menu',
         }}
       />
       <Tabs.Screen
@@ -85,3 +110,30 @@ export default function MainLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  assistantButtonWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: Colors.brand.sage,
+    borderWidth: 4,
+    borderColor: Colors.brand.cream,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  assistantButtonWrapFocused: {
+    backgroundColor: Colors.brand.sageDark,
+  },
+  assistantButtonIcon: {
+    width: 30,
+    height: 30,
+    tintColor: Colors.brand.cream,
+    resizeMode: 'contain',
+  },
+});

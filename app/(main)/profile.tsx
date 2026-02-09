@@ -36,7 +36,6 @@ export default function ProfileScreen() {
   const subscriptionPlan = useSubscriptionStore((s) => s.plan);
   const creditsUsed = useSubscriptionStore((s) => s.creditsUsed);
   const creditsLimit = useSubscriptionStore((s) => s.creditsLimit);
-  const canUseVoice = useSubscriptionStore((s) => s.canUseVoice);
   const [showPaywall, setShowPaywall] = useState(false);
 
   const visibleVoices = useMemo(() => {
@@ -164,7 +163,7 @@ export default function ProfileScreen() {
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => {
-            if (canUseVoice) {
+            if (subscriptionPlan === 'pro') {
               void Linking.openURL('https://apps.apple.com/account/subscriptions');
             } else {
               setShowPaywall(true);

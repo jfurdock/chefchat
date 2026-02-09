@@ -41,14 +41,22 @@ export default function PaywallSheet({ visible, onClose, onSubscribed }: Paywall
   const hydrate = useSubscriptionStore((s) => s.hydrate);
 
   const handlePurchase = async () => {
-    if (!uid) return;
+    if (!uid) {
+      Alert.alert('Sign In Required', 'Please sign in before starting your free trial.');
+      return;
+    }
     setPurchasing(true);
     try {
       const info = await purchaseProPackage();
-      if (info && hasProEntitlement(info)) {
+      if (hasProEntitlement(info)) {
         await hydrate(uid);
         onSubscribed?.();
         onClose();
+      } else {
+        Alert.alert(
+          'Purchase Incomplete',
+          'The purchase did not activate your Pro entitlement yet. Please try restoring purchases.',
+        );
       }
     } catch (error: any) {
       if (error?.userCancelled) {
@@ -61,11 +69,14 @@ export default function PaywallSheet({ visible, onClose, onSubscribed }: Paywall
   };
 
   const handleRestore = async () => {
-    if (!uid) return;
+    if (!uid) {
+      Alert.alert('Sign In Required', 'Please sign in before restoring purchases.');
+      return;
+    }
     setRestoring(true);
     try {
       const info = await restorePurchases();
-      if (info && hasProEntitlement(info)) {
+      if (hasProEntitlement(info)) {
         await hydrate(uid);
         Alert.alert('Restored!', 'Your subscription has been restored.');
         onSubscribed?.();

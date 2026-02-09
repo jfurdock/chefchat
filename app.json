@@ -91,6 +91,9 @@
       "expo-router",
       "./plugins/withFirebaseFix"
     ],
+    "extra": {
+      "revenueCatApiKeyIos": ""
+    },
     "experiments": {
       "typedRoutes": true
     }

@@ -39,6 +39,8 @@ export async function signUp(
     favorites: [],
     dietaryPreferences: [],
     cookingHistory: [],
+    skillLevel: null,
+    onboardingCompleted: false,
     createdAt: serverTimestamp(),
   };
 

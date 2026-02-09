@@ -38,11 +38,22 @@ type ListVoicesResponse = {
 
 const VOICE_SETTINGS_KEY = 'chefchat_tts_voice_settings';
 const PLAYBACK_TIMEOUT_MS = 45000;
+const TARGET_SPEAKING_RATE = 1.1;
+const MIN_SPEAKING_RATE = 0.85;
+const MAX_SPEAKING_RATE = 2.0;
+
+/**
+ * Post-playback cooldown period. After TTS stops, the microphone may still
+ * pick up residual assistant audio for a short window. During this cooldown
+ * window, the voice hook should suppress low-confidence (interim) transcripts
+ * that look like echo rather than genuine user speech.
+ */
+const POST_PLAYBACK_COOLDOWN_MS = 900;
 
 const DEFAULT_SETTINGS: TtsVoiceSettings = {
   voiceName: 'Lily',
   languageCode: 'en-US',
-  speakingRate: 1.0,
+  speakingRate: TARGET_SPEAKING_RATE,
   pitch: 0,
 };
 
@@ -60,6 +71,13 @@ let playbackToken = 0;
 let currentPlayer: any = null;
 const activePlayers = new Set<any>();
 let cachedSettings: TtsVoiceSettings | null = null;
+
+/**
+ * Timestamp (ms) until which post-playback cooldown is active. Any interim
+ * STT transcript arriving before this time is likely residual assistant audio
+ * bleeding back through the microphone.
+ */
+let playbackCooldownUntil = 0;
 
 function splitIntoSentences(text: string): string[] {
   const sentences = text
@@ -107,6 +125,11 @@ function toError(error: any, fallback: string): Error {
   return new Error(error?.message || fallback);
 }
 
+function clampSpeakingRate(value: unknown, fallback = TARGET_SPEAKING_RATE): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(MIN_SPEAKING_RATE, Math.min(MAX_SPEAKING_RATE, value));
+}
+
 export async function getVoiceSettings(): Promise<TtsVoiceSettings> {
   if (cachedSettings) return cachedSettings;
 
@@ -122,8 +145,7 @@ export async function getVoiceSettings(): Promise<TtsVoiceSettings> {
       voiceName: typeof parsed?.voiceName === 'string' ? parsed.voiceName : DEFAULT_SETTINGS.voiceName,
       languageCode:
         typeof parsed?.languageCode === 'string' ? parsed.languageCode : DEFAULT_SETTINGS.languageCode,
-      speakingRate:
-        typeof parsed?.speakingRate === 'number' ? parsed.speakingRate : DEFAULT_SETTINGS.speakingRate,
+      speakingRate: clampSpeakingRate(parsed?.speakingRate, DEFAULT_SETTINGS.speakingRate),
       pitch: typeof parsed?.pitch === 'number' ? parsed.pitch : DEFAULT_SETTINGS.pitch,
     };
     cachedSettings = settings;
@@ -139,6 +161,7 @@ export async function setVoiceSettings(settings: Partial<TtsVoiceSettings>): Pro
   const next: TtsVoiceSettings = {
     ...current,
     ...settings,
+    speakingRate: clampSpeakingRate(settings.speakingRate ?? current.speakingRate, TARGET_SPEAKING_RATE),
   };
   cachedSettings = next;
   await AsyncStorage.setItem(VOICE_SETTINGS_KEY, JSON.stringify(next));
@@ -186,6 +209,8 @@ async function playAudioBase64(
   mimeType: string | undefined,
   token: number
 ): Promise<void> {
+  if (token !== playbackToken) return;
+
   if (!FileSystem.cacheDirectory) {
     throw new Error('File cache directory is unavailable.');
   }
@@ -284,7 +309,7 @@ async function speakOnDevice(text: string, settings: TtsVoiceSettings): Promise<
   return new Promise<void>((resolve, reject) => {
     Speech.speak(text, {
       language: settings.languageCode,
-      rate: settings.speakingRate,
+      rate: clampSpeakingRate(settings.speakingRate, TARGET_SPEAKING_RATE),
       pitch: Math.max(0.5, Math.min(2.0, 1 + settings.pitch / 20)),
       onDone: () => resolve(),
       onStopped: () => resolve(),
@@ -321,11 +346,13 @@ async function continueQueue(options: TtsOptions, token: number) {
       ...options,
       voiceName: options.voiceName ?? stored.voiceName,
       languageCode: options.languageCode ?? stored.languageCode,
-      speakingRate: options.speakingRate ?? stored.speakingRate,
+      speakingRate: clampSpeakingRate(options.speakingRate ?? stored.speakingRate, TARGET_SPEAKING_RATE),
       pitch: options.pitch ?? stored.pitch,
     };
     const synthesized = await synthesizeSpeechCloud(nextSentence, settings);
+    if (token !== playbackToken) return;
     await playAudioBase64(synthesized.audioBase64, synthesized.mimeType, token);
+    if (token !== playbackToken) return;
     await continueQueue(options, token);
   } catch (error: any) {
     try {
@@ -335,10 +362,12 @@ async function continueQueue(options: TtsOptions, token: number) {
         ...options,
         voiceName: options.voiceName ?? stored.voiceName,
         languageCode: options.languageCode ?? stored.languageCode,
-        speakingRate: options.speakingRate ?? stored.speakingRate,
+        speakingRate: clampSpeakingRate(options.speakingRate ?? stored.speakingRate, TARGET_SPEAKING_RATE),
         pitch: options.pitch ?? stored.pitch,
       };
+      if (token !== playbackToken) return;
       await speakOnDevice(nextSentence, settings);
+      if (token !== playbackToken) return;
       await continueQueue(options, token);
     } catch {
       speaking = false;
@@ -374,6 +403,8 @@ export async function speakQueued(text: string, options: TtsOptions = {}): Promi
 }
 
 export async function stopSpeaking(clearQueue = true): Promise<void> {
+  // Increment token FIRST — this immediately invalidates any in-flight
+  // playback promises and queue continuations so they resolve/bail out.
   playbackToken += 1;
   speaking = false;
   if (clearQueue) queue = [];
@@ -397,9 +428,11 @@ export async function stopSpeaking(clearQueue = true): Promise<void> {
   }
   activePlayers.clear();
   currentPlayer = null;
-  try {
-    await setIsAudioActiveAsync(false);
-  } catch {}
+  // Keep session active; frequent deactivate/reactivate cycles can cause
+  // inconsistent output routing/levels on iOS.
+
+  // Set post-playback cooldown so the voice hook can suppress residual echo.
+  playbackCooldownUntil = Date.now() + POST_PLAYBACK_COOLDOWN_MS;
 
   activeResolve?.();
   activeResolve = null;
@@ -414,4 +447,21 @@ export async function interruptAndSpeak(text: string, options: TtsOptions = {}):
 
 export async function isSpeaking(): Promise<boolean> {
   return speaking;
+}
+
+/**
+ * Returns true if we are still within the post-playback cooldown window.
+ * During this period, interim STT transcripts that look like echo should
+ * be suppressed by the voice hook.
+ */
+export function isInPlaybackCooldown(): boolean {
+  return Date.now() < playbackCooldownUntil;
+}
+
+/**
+ * Returns the timestamp (ms) when playback last stopped. Useful for the
+ * voice hook to calculate how recently TTS was active.
+ */
+export function getPlaybackCooldownUntil(): number {
+  return playbackCooldownUntil;
 }

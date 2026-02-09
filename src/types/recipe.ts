@@ -61,3 +61,9 @@ export interface UserProfile {
   cookingHistory: CookingRecord[];
   createdAt: FirebaseFirestoreTypes.Timestamp;
 }
+
+export interface UserRecipe extends Recipe {
+  createdBy: string;
+  importMethod: 'photo' | 'manual' | 'url';
+  sourcePhotos?: string[];
+}

@@ -52,10 +52,6 @@ export default function RecipeCard({
             <Text style={styles.metaText}>{totalTime} min</Text>
           </View>
           <View style={styles.metaItem}>
-            <Ionicons name="flame-outline" size={14} color={Colors.light.textSecondary} />
-            <Text style={styles.metaText}>{recipe.difficulty}</Text>
-          </View>
-          <View style={styles.metaItem}>
             <Ionicons name="people-outline" size={14} color={Colors.light.textSecondary} />
             <Text style={styles.metaText}>{recipe.servings} servings</Text>
           </View>

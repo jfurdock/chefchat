@@ -1,14 +1,18 @@
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useRecipe, useFavorites } from '@/src/hooks/useRecipes';
+import { useShoppingStore } from '@/src/stores/shoppingStore';
 import Colors from '@/constants/Colors';
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { recipe, loading, error } = useRecipe(id);
   const { toggleFavorite, isFavorite } = useFavorites();
+  const { addRecipeToShoppingList, isRecipeOnShoppingList } = useShoppingStore();
   const router = useRouter();
+  const [addedToList, setAddedToList] = useState(false);
 
   if (loading) {
     return (
@@ -34,6 +38,7 @@ export default function RecipeDetailScreen() {
 
   const totalTime = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
   const favorite = isFavorite(recipe.id);
+  const chefHatIcon = require('../../../assets/images/chefhat-icon.png');
 
   return (
     <View style={styles.container}>
@@ -67,13 +72,6 @@ export default function RecipeDetailScreen() {
               <Ionicons name="time-outline" size={20} color={Colors.brand.sageDark} />
               <Text style={styles.metaValue}>{totalTime} min</Text>
               <Text style={styles.metaLabel}>Total</Text>
-            </View>
-            <View style={styles.metaCard}>
-              <Ionicons name="flame-outline" size={20} color={Colors.brand.sageDark} />
-              <Text style={styles.metaValue}>
-                {recipe.difficulty.charAt(0).toUpperCase() + recipe.difficulty.slice(1)}
-              </Text>
-              <Text style={styles.metaLabel}>Difficulty</Text>
             </View>
             <View style={styles.metaCard}>
               <Ionicons name="people-outline" size={20} color={Colors.brand.sageDark} />
@@ -136,16 +134,39 @@ export default function RecipeDetailScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Sticky "Start Cooking" button */}
+      {/* Sticky action buttons */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.cookButton}
           activeOpacity={0.8}
           onPress={() => router.push(`/(main)/recipe/cook/${recipe.id}`)}
         >
-          <Ionicons name="mic" size={22} color={Colors.brand.cream} />
+          <Image source={chefHatIcon} style={styles.cookButtonIcon} />
           <Text style={styles.cookButtonText}>Start Cooking</Text>
         </TouchableOpacity>
+        {isRecipeOnShoppingList(recipe.id) || addedToList ? (
+          <View style={[styles.shoppingButton, styles.shoppingButtonDisabled]}>
+            <Ionicons name="checkmark-circle" size={20} color={Colors.brand.sageDark} />
+            <Text style={styles.shoppingButtonTextDisabled}>On Shopping List</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.shoppingButton}
+            activeOpacity={0.8}
+            onPress={() => {
+              addRecipeToShoppingList(recipe);
+              setAddedToList(true);
+              Alert.alert(
+                'Added to Shopping List',
+                `${recipe.title} ingredients have been added to your shopping list.`,
+                [{ text: 'OK' }]
+              );
+            }}
+          >
+            <Ionicons name="cart-outline" size={20} color={Colors.brand.sageDark} />
+            <Text style={styles.shoppingButtonText}>Add to Shopping List</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -331,9 +352,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  cookButtonIcon: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
+    tintColor: Colors.brand.cream,
+  },
   cookButtonText: {
     color: Colors.brand.cream,
     fontSize: 18,
     fontWeight: '700',
+  },
+  shoppingButton: {
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.brand.sage,
+    backgroundColor: Colors.brand.cream,
+    marginTop: 8,
+  },
+  shoppingButtonDisabled: {
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.backgroundSecondary,
+  },
+  shoppingButtonText: {
+    color: Colors.brand.sageDark,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  shoppingButtonTextDisabled: {
+    color: Colors.light.textSecondary,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

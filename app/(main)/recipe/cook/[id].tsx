@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,11 +35,11 @@ export default function CookingSessionScreen() {
     endSession,
     nextStep,
     previousStep,
+    conversationHistory,
   } = useCookingStore();
   const {
     voiceState,
     transcriptText,
-    assistantText,
     error: voiceError,
     startVoiceLoop,
     stopVoiceLoop,
@@ -47,6 +48,7 @@ export default function CookingSessionScreen() {
     announceCurrentStep,
     isVoiceLoopActive,
   } = useVoice();
+  const chatScrollRef = useRef<ScrollView>(null);
 
   // Start the cooking session when recipe loads
   useEffect(() => {
@@ -69,6 +71,10 @@ export default function CookingSessionScreen() {
       lastAnnouncedStepRef.current = null;
     }
   }, [isActive]);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollToEnd({ animated: true });
+  }, [conversationHistory.length, transcriptText, voiceState]);
 
   // If the step changes while voice mode is active (manual tap or command),
   // read the new step out loud so users can stay hands-free.
@@ -127,52 +133,49 @@ export default function CookingSessionScreen() {
       />
 
       <View style={styles.container}>
-        {/* Step progress indicator */}
-        <View style={styles.progressBar}>
-          {recipe.steps.map((_, idx) => (
-            <View
-              key={idx}
-              style={[
-                styles.progressDot,
-                idx + 1 <= currentStep && styles.progressDotActive,
-                idx + 1 === currentStep && styles.progressDotCurrent,
-              ]}
-            />
-          ))}
-        </View>
+        <View style={styles.topSection}>
+          <View style={styles.progressBar}>
+            {recipe.steps.map((_, idx) => (
+              <View
+                key={idx}
+                style={[
+                  styles.progressDot,
+                  idx + 1 <= currentStep && styles.progressDotActive,
+                  idx + 1 === currentStep && styles.progressDotCurrent,
+                ]}
+              />
+            ))}
+          </View>
 
-        {/* Step counter */}
-        <Text style={styles.stepCounter}>
-          Step {currentStep} of {recipe.steps.length}
-        </Text>
+          <Text style={styles.stepCounter}>
+            Step {currentStep} of {recipe.steps.length}
+          </Text>
 
-        {/* Step instruction */}
-        <View style={styles.stepCard}>
-          <Text style={styles.stepInstruction}>{step?.instruction}</Text>
+          <View style={styles.stepCard}>
+            <Text style={styles.stepInstruction}>{step?.instruction}</Text>
 
-          {step?.duration && (
-            <View style={styles.timer}>
-              <Ionicons name="timer-outline" size={18} color={Colors.brand.sageDark} />
-              <Text style={styles.timerText}>
-                {step.duration >= 60
-                  ? `${Math.floor(step.duration / 60)} minutes`
-                  : `${step.duration} seconds`}
-              </Text>
-            </View>
-          )}
+            {step?.duration && (
+              <View style={styles.timer}>
+                <Ionicons name="timer-outline" size={18} color={Colors.brand.sageDark} />
+                <Text style={styles.timerText}>
+                  {step.duration >= 60
+                    ? `${Math.floor(step.duration / 60)} minutes`
+                    : `${step.duration} seconds`}
+                </Text>
+              </View>
+            )}
 
-          {step?.tips && (
-            <View style={styles.tipBox}>
-              <Ionicons name="bulb-outline" size={16} color={Colors.brand.sageDark} />
-              <Text style={styles.tipText}>{step.tips}</Text>
-            </View>
-          )}
+            {step?.tips && (
+              <View style={styles.tipBox}>
+                <Ionicons name="bulb-outline" size={16} color={Colors.brand.sageDark} />
+                <Text style={styles.tipText}>{step.tips}</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         <VoiceIndicator
           voiceState={voiceState}
-          transcriptText={transcriptText}
-          assistantText={assistantText}
           error={voiceError}
           onPress={() => {
             if (voiceState === 'speaking') {
@@ -183,7 +186,44 @@ export default function CookingSessionScreen() {
           }}
         />
 
-        {/* Manual navigation controls */}
+        <View style={styles.chatPanel}>
+          <Text style={styles.chatTitle}>Conversation</Text>
+          <ScrollView
+            ref={chatScrollRef}
+            style={styles.chatScroll}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {conversationHistory.map((entry, index) => {
+              const isUser = entry.role === 'user';
+              return (
+                <View
+                  key={`${entry.role}-${index}`}
+                  style={[
+                    styles.chatBubble,
+                    isUser ? styles.chatBubbleUser : styles.chatBubbleAssistant,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.chatBubbleText,
+                      isUser && styles.chatBubbleTextUser,
+                    ]}
+                  >
+                    {entry.content}
+                  </Text>
+                </View>
+              );
+            })}
+
+            {!!transcriptText && voiceState === 'listening' && (
+              <View style={[styles.chatBubble, styles.chatBubbleUserDraft]}>
+                <Text style={styles.chatBubbleTextDraft}>{transcriptText}</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+
         <View style={styles.controls}>
           <TouchableOpacity
             style={[styles.navButton, isFirstStep && styles.navButtonDisabled]}
@@ -232,7 +272,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.brand.cream,
-    padding: 20,
+    padding: 16,
+  },
+  topSection: {
+    gap: 8,
   },
   center: {
     flex: 1,
@@ -247,7 +290,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   progressDot: {
     height: 4,
@@ -267,12 +310,12 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     textAlign: 'center',
     fontWeight: '500',
-    marginBottom: 20,
+    marginBottom: 4,
   },
   stepCard: {
     backgroundColor: Colors.light.card,
     borderRadius: 20,
-    padding: 24,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -316,12 +359,74 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 20,
   },
+  chatPanel: {
+    flex: 1,
+    marginTop: 10,
+    backgroundColor: Colors.light.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    overflow: 'hidden',
+  },
+  chatTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.light.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  chatScroll: {
+    flex: 1,
+  },
+  chatContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  chatBubble: {
+    maxWidth: '92%',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  chatBubbleAssistant: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.brand.cream,
+  },
+  chatBubbleUser: {
+    alignSelf: 'flex-end',
+    backgroundColor: Colors.brand.sage,
+  },
+  chatBubbleUserDraft: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#d3e5d1',
+    borderWidth: 1,
+    borderColor: Colors.brand.sage,
+    borderStyle: 'dashed',
+  },
+  chatBubbleText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.light.text,
+  },
+  chatBubbleTextUser: {
+    color: Colors.brand.cream,
+    fontWeight: '500',
+  },
+  chatBubbleTextDraft: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.brand.sageDark,
+  },
   controls: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 'auto',
-    paddingBottom: 20,
+    marginTop: 12,
+    paddingBottom: 12,
     gap: 12,
   },
   navButton: {

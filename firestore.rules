@@ -2,10 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Recipes: public read, only admin can write
+    // Recipes: public read, authenticated users can create/update their own
     match /recipes/{recipeId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.token.admin == true;
+      allow create: if request.auth != null
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && (
+          request.auth.token.admin == true
+          || resource.data.createdBy == request.auth.uid
+        );
     }
 
     // User profiles: users can only read/write their own

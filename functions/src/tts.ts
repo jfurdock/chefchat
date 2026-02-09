@@ -91,7 +91,7 @@ export const synthesizeSpeech = functions
 
     const languageCode = payload.languageCode || 'en-US';
     const voiceName = resolveVoiceId(payload.voiceName);
-    const speakingRate = asBoundedNumber(payload.speakingRate, 1.0, 0.25, 2.0);
+    const speakingRate = asBoundedNumber(payload.speakingRate, 1.1, 0.25, 2.0);
     const pitch = asBoundedNumber(payload.pitch, 0, -20, 20);
 
     const modelId = readInworldConfig('tts_model', 'inworld-tts-1.5-max');

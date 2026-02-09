@@ -41,6 +41,24 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="shopping"
+        options={{
+          title: 'Shopping',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cart-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="menu"
+        options={{
+          title: 'Menu',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="book-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',

@@ -1,13 +1,20 @@
-import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useFavorites } from '@/src/hooks/useRecipes';
+import { useImportStore } from '@/src/stores/importStore';
 import RecipeCard from '@/src/components/RecipeCard';
 import Colors from '@/constants/Colors';
 
 export default function FavoritesScreen() {
   const { favorites, loading, toggleFavorite, isFavorite, refetch } = useFavorites();
+  const startImport = useImportStore((s) => s.startImport);
   const router = useRouter();
+
+  const handleImportPress = () => {
+    startImport();
+    router.push('/(main)/recipe/import/method');
+  };
 
   return (
     <View style={styles.container}>
@@ -35,11 +42,20 @@ export default function FavoritesScreen() {
             <Ionicons name="heart-outline" size={48} color={Colors.light.border} />
             <Text style={styles.emptyTitle}>No favorites yet</Text>
             <Text style={styles.emptyText}>
-              Tap the heart on any recipe to save it here
+              Tap the heart on any recipe to save it here, or import your own recipes
             </Text>
           </View>
         }
       />
+
+      {/* Floating Action Button for Recipe Import */}
+      <TouchableOpacity
+        style={styles.fab}
+        activeOpacity={0.85}
+        onPress={handleImportPress}
+      >
+        <Ionicons name="add" size={28} color={Colors.brand.cream} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -51,7 +67,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   empty: {
     alignItems: 'center',
@@ -69,5 +85,21 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 48,
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.brand.sageDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 6,
   },
 });

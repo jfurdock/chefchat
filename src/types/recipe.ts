@@ -59,5 +59,7 @@ export interface UserProfile {
   favorites: string[];
   dietaryPreferences: string[];
   cookingHistory: CookingRecord[];
+  skillLevel: 'beginner' | 'intermediate' | 'advanced' | null;
+  onboardingCompleted: boolean;
   createdAt: FirebaseFirestoreTypes.Timestamp;
 }

@@ -7,11 +7,26 @@ type ConversationHistoryItem = {
   content: string;
 };
 
+export type AssistantRecipeCatalogItem = {
+  id: string;
+  title: string;
+  cuisine: string;
+  difficulty: Recipe['difficulty'];
+  servings: number;
+  totalTimeMinutes: number;
+  tags: string[];
+};
+
 type InworldChatRequest = {
   userMessage: string;
   currentStep: number;
   recipe: Recipe | null;
   conversationHistory: ConversationHistoryItem[];
+  assistantMode?: 'general' | 'guided' | 'onboarding';
+  activeRecipeId?: string | null;
+  recipeCatalog?: AssistantRecipeCatalogItem[];
+  favoriteRecipeIds?: string[];
+  favoriteRecipeTitles?: string[];
 };
 
 type InworldChatResponse = {

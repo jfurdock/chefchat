@@ -58,7 +58,7 @@ const POST_PLAYBACK_COOLDOWN_MS = 1100;
 export const POST_COOLDOWN_SETTLING_MS = 400;
 
 const DEFAULT_SETTINGS: TtsVoiceSettings = {
-  voiceName: 'Dennis',
+  voiceName: 'Deborah',
   languageCode: 'en-US',
   speakingRate: TARGET_SPEAKING_RATE,
   pitch: 0,

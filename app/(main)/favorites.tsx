@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: Colors.brand.sageDark,
+    backgroundColor: Colors.brand.sage,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',

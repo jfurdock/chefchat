@@ -22,7 +22,7 @@ interface ConfettiPiece {
   color: string;
 }
 
-const CONFETTI_COLORS = [Colors.brand.sage, Colors.brand.sageDark, '#E8A87C'];
+const CONFETTI_COLORS = [Colors.brand.sage, Colors.brand.charcoal, Colors.brand.stone];
 
 const ConfettiPiece: React.FC<{ piece: ConfettiPiece }> = ({ piece }) => {
   const animY = useRef(new Animated.Value(0)).current;
@@ -228,13 +228,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: Colors.brand.sage,
+    backgroundColor: Colors.brand.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.light.card,
+    color: Colors.brand.white,
   },
 });

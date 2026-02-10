@@ -24,7 +24,7 @@ export const MenuRecipeCard: React.FC<MenuRecipeCardProps> = ({
 }) => {
   const isReadyToCook = checkedCount === totalCount && totalCount > 0;
   const progressPercentage = totalCount > 0 ? (checkedCount / totalCount) * 100 : 0;
-  const chefHatIcon = require('../../assets/images/chefhat-icon.png');
+  const chefChatLogo = require('../../assets/images/chef_chat_logo.png');
 
   return (
     <View style={styles.container}>
@@ -74,7 +74,7 @@ export const MenuRecipeCard: React.FC<MenuRecipeCardProps> = ({
           onPress={onStartCooking}
           activeOpacity={0.7}
         >
-          <Image source={chefHatIcon} style={styles.cookIconImage} />
+          <Image source={chefChatLogo} style={styles.cookIconImage} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -163,10 +163,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.brand.sage,
   },
   cookIconImage: {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     resizeMode: 'contain',
-    tintColor: Colors.light.card,
   },
   removeButton: {
     backgroundColor: Colors.light.backgroundSecondary,

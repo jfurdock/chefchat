@@ -225,7 +225,7 @@ export default function OnboardingChatScreen() {
 
   const welcomeLine = useMemo(
     () =>
-      `Hey ${firstName}, I'm Deborah, your cooking assistant! I'll walk you through recipes step by step, totally hands-free. Let me show you how it works.`,
+      `Hey ${firstName}, your cooking assistant is ready. I'll walk you through recipes step by step, totally hands-free. Let me show you how it works.`,
     [firstName],
   );
 
@@ -235,7 +235,6 @@ export default function OnboardingChatScreen() {
   const [liveTranscript, setLiveTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [microphoneDenied, setMicrophoneDenied] = useState(false);
-  const [showWakeSkip, setShowWakeSkip] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
@@ -369,7 +368,6 @@ export default function OnboardingChatScreen() {
 
     if (nextPhase !== 'wake-tutorial') {
       shouldListenRef.current = false;
-      setShowWakeSkip(false);
       setLiveTranscript('');
       clearWakeTimers();
     }
@@ -408,7 +406,6 @@ export default function OnboardingChatScreen() {
           if (phaseRef.current !== 'wake-tutorial') return;
           if (runId !== onboardingRunIdRef.current || !isFocusedRef.current) return;
 
-          setShowWakeSkip(true);
           shouldListenRef.current = true;
           await startRecognition();
 
@@ -472,7 +469,6 @@ export default function OnboardingChatScreen() {
     wakeHandledRef.current = true;
     clearWakeTimers();
     shouldListenRef.current = false;
-    setShowWakeSkip(false);
     setLiveTranscript('');
     stopRecognition();
 
@@ -487,16 +483,18 @@ export default function OnboardingChatScreen() {
     await advanceToPhase('features', { runId: onboardingRunIdRef.current });
   }, [advanceToPhase, appendAssistantMessage, appendUserMessage, clearWakeTimers, speakLine, stopRecognition]);
 
-  const handleSkipWakeTutorial = useCallback(() => {
+  const handleCannotTalkRightNow = useCallback(() => {
     if (phaseRef.current !== 'wake-tutorial') return;
+    if (wakeHandledRef.current) return;
+    wakeHandledRef.current = true;
     clearWakeTimers();
     shouldListenRef.current = false;
-    setShowWakeSkip(false);
     setLiveTranscript('');
     stopRecognition();
-    appendUserMessage('Skip for now');
+    appendUserMessage("Can't talk right now");
+    appendAssistantMessage('All good, we can keep going. You can always say hey chef later when you want.');
     void advanceToPhase('features', { runId: onboardingRunIdRef.current });
-  }, [advanceToPhase, appendUserMessage, clearWakeTimers, stopRecognition]);
+  }, [advanceToPhase, appendAssistantMessage, appendUserMessage, clearWakeTimers, stopRecognition]);
 
   const handleDietaryContinue = useCallback(() => {
     if (phaseRef.current !== 'dietary') return;
@@ -521,23 +519,6 @@ export default function OnboardingChatScreen() {
     }
   }, [complete, router, saving]);
 
-  const handleVoiceIndicatorPress = useCallback(async () => {
-    if (micDeniedRef.current) return;
-    if (phaseRef.current !== 'wake-tutorial') return;
-
-    if (shouldListenRef.current) {
-      shouldListenRef.current = false;
-      setVoiceState('idle');
-      setLiveTranscript('');
-      stopRecognition();
-      return;
-    }
-
-    shouldListenRef.current = true;
-    setError(null);
-    await startRecognition();
-  }, [startRecognition, stopRecognition]);
-
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
@@ -551,7 +532,6 @@ export default function OnboardingChatScreen() {
       setVoiceState('processing');
       setLiveTranscript('');
       setError(null);
-      setShowWakeSkip(false);
       setSaving(false);
 
       wakeHandledRef.current = false;
@@ -663,7 +643,7 @@ export default function OnboardingChatScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Meet Deborah</Text>
+        <Text style={styles.title}>Meet ChefChat</Text>
         <Text style={styles.subtitle}>Let\'s get your kitchen assistant set up.</Text>
       </View>
 
@@ -722,12 +702,11 @@ export default function OnboardingChatScreen() {
           voiceState={voiceState}
           passiveListening={phase !== 'wake-tutorial' || microphoneDenied}
           error={error}
-          onPress={() => void handleVoiceIndicatorPress()}
         />
 
-        {phase === 'wake-tutorial' && showWakeSkip && (
-          <TouchableOpacity style={styles.skipWakeButton} onPress={handleSkipWakeTutorial}>
-            <Text style={styles.skipWakeText}>Skip for now</Text>
+        {phase === 'wake-tutorial' && (
+          <TouchableOpacity style={styles.wakeResponseChip} onPress={handleCannotTalkRightNow}>
+            <Text style={styles.wakeResponseChipText}>Can't talk right now</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -913,19 +892,19 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     backgroundColor: Colors.brand.cream,
   },
-  skipWakeButton: {
+  wakeResponseChip: {
     marginTop: 10,
     alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: Colors.brand.sage,
     backgroundColor: Colors.light.backgroundSecondary,
   },
-  skipWakeText: {
+  wakeResponseChipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.light.text,
+    color: Colors.brand.sageDark,
   },
 });

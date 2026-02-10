@@ -17,15 +17,15 @@ type VoiceIndicatorProps = {
   transcriptText?: string;
   assistantText?: string;
   error?: string | null;
-  onPress: () => void;
+  onPress?: () => void;
 };
 
 function getStatusLabel(state: VoiceState, passiveListening: boolean) {
-  if (state === 'listening' && passiveListening) return 'Tap or speak';
+  if (state === 'listening' && passiveListening) return 'Listening for your voice';
   if (state === 'listening') return 'Listening...';
   if (state === 'processing') return 'Processing...';
   if (state === 'speaking') return 'Speaking...';
-  return 'Tap to talk';
+  return 'Microphone ready';
 }
 
 export default function VoiceIndicator({
@@ -112,23 +112,31 @@ export default function VoiceIndicator({
     [passiveListening, voiceState, pulse]
   );
 
+  const circle = (
+    <Animated.View style={circleStyle}>
+      <Ionicons
+        name={voiceState === 'listening' && !passiveListening ? 'mic' : 'mic-outline'}
+        size={30}
+        color={
+          voiceState === 'idle'
+            ? Colors.light.textSecondary
+            : passiveListening && voiceState === 'listening'
+              ? Colors.brand.sageDark
+              : Colors.brand.cream
+        }
+      />
+    </Animated.View>
+  );
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
-        <Animated.View style={circleStyle}>
-          <Ionicons
-            name={voiceState === 'listening' && !passiveListening ? 'mic' : 'mic-outline'}
-            size={30}
-            color={
-              voiceState === 'idle'
-                ? Colors.light.textSecondary
-                : passiveListening && voiceState === 'listening'
-                  ? Colors.brand.sageDark
-                  : Colors.brand.cream
-            }
-          />
-        </Animated.View>
-      </TouchableOpacity>
+      {onPress ? (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+          {circle}
+        </TouchableOpacity>
+      ) : (
+        circle
+      )}
 
       <Text style={styles.status}>{getStatusLabel(voiceState, passiveListening)}</Text>
 

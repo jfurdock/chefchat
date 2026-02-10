@@ -44,7 +44,6 @@ export default function RecipeDetailScreen() {
 
   const totalTime = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
   const favorite = isFavorite(recipe.id);
-  const chefHatIcon = require('../../../assets/images/chefhat-icon.png');
 
   return (
     <View style={styles.container}>
@@ -154,7 +153,6 @@ export default function RecipeDetailScreen() {
             }
           }}
         >
-          <Image source={chefHatIcon} style={styles.cookButtonIcon} />
           <Text style={styles.cookButtonText}>Start Cooking</Text>
         </TouchableOpacity>
         {isRecipeOnShoppingList(recipe.id) || addedToList ? (
@@ -363,21 +361,14 @@ const styles = StyleSheet.create({
   },
   cookButton: {
     flexDirection: 'row',
-    backgroundColor: Colors.brand.sage,
+    backgroundColor: Colors.brand.accent,
     height: 56,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 10,
-  },
-  cookButtonIcon: {
-    width: 22,
-    height: 22,
-    resizeMode: 'contain',
-    tintColor: Colors.brand.cream,
   },
   cookButtonText: {
-    color: Colors.brand.cream,
+    color: Colors.brand.white,
     fontSize: 18,
     fontWeight: '700',
   },

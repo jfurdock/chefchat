@@ -10,7 +10,7 @@
 		"splash": {
 			"image": "./assets/images/splash-icon.png",
 			"resizeMode": "contain",
-			"backgroundColor": "#F7F3EE"
+			"backgroundColor": "#F3A55E"
 		},
 		"ios": {
 			"supportsTablet": true,
@@ -44,7 +44,7 @@
 		"android": {
 			"adaptiveIcon": {
 				"foregroundImage": "./assets/images/adaptive-icon.png",
-				"backgroundColor": "#F7F3EE"
+				"backgroundColor": "#F3A55E"
 			},
 			"package": "com.company.chefchat",
 			"googleServicesFile": "./google-services.json",

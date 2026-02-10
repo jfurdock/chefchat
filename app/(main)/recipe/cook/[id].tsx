@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   },
   chatBubbleUserDraft: {
     alignSelf: 'flex-end',
-    backgroundColor: '#d3e5d1',
+    backgroundColor: Colors.brand.stone,
     borderWidth: 1,
     borderColor: Colors.brand.sage,
     borderStyle: 'dashed',

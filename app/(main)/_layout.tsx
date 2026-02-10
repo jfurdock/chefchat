@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, StyleSheet, View } from 'react-native';
 import Colors from '@/constants/Colors';
 
-const chefHatIcon = require('@/assets/images/chefhat-icon.png');
+const chefChatHatLogo = require('@/assets/images/chef_chat_hat_logo.png');
 
 export default function MainLayout() {
   return (
@@ -62,7 +62,7 @@ export default function MainLayout() {
                 focused && styles.assistantButtonWrapFocused,
               ]}
             >
-              <Image source={chefHatIcon} style={styles.assistantButtonIcon} />
+              <Image source={chefChatHatLogo} style={styles.assistantButtonIcon} />
             </View>
           ),
         }}
@@ -113,27 +113,26 @@ export default function MainLayout() {
 
 const styles = StyleSheet.create({
   assistantButtonWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: Colors.brand.sage,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: Colors.brand.accent,
     borderWidth: 4,
     borderColor: Colors.brand.cream,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: Colors.brand.accentDark,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    elevation: 10,
   },
   assistantButtonWrapFocused: {
-    backgroundColor: Colors.brand.sageDark,
+    backgroundColor: Colors.brand.accentDark,
   },
   assistantButtonIcon: {
-    width: 30,
-    height: 30,
-    tintColor: Colors.brand.cream,
+    width: 34,
+    height: 34,
     resizeMode: 'contain',
   },
 });

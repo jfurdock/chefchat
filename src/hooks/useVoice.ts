@@ -12,6 +12,11 @@ import { playListeningPing } from "@/src/services/uiSoundService";
 import { useCookingStore } from "@/src/stores/cookingStore";
 import { Ingredient, Recipe, Step } from "@/src/types/recipe";
 import {
+	hasWakePhrase,
+	normalizeTextForWake,
+	stripLeadingWakePhrase,
+} from "@/src/utils/wakePhraseUtils";
+import {
 	ExpoSpeechRecognitionModule,
 	type ExpoSpeechRecognitionErrorEvent,
 	type ExpoSpeechRecognitionResultEvent,
@@ -138,28 +143,7 @@ function includesAny(text: string, phrases: string[]): boolean {
 }
 
 function normalizeText(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^a-z0-9\s]/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-}
-
-function hasWakePhrase(value: string): boolean {
-	const normalized = normalizeText(value);
-	if (!normalized) return false;
-	return /\b(?:(?:hey|uh|um|ok|okay)\s+)?chef(?:\s*chat)?\b/.test(normalized);
-}
-
-function stripLeadingWakePhrase(value: string): string {
-	if (!value) return "";
-	return value
-		.trim()
-		.replace(
-			/^(?:(?:hey|uh|um|ok|okay)\s+)?chef(?:\s*chat)?(?:[\s,:;.!?-]+|$)/i,
-			"",
-		)
-		.trim();
+	return normalizeTextForWake(value);
 }
 
 function sanitizeTranscriptForCommit(value: string): string {

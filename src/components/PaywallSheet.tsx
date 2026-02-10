@@ -32,7 +32,7 @@ const FEATURES = [
   { icon: 'footsteps-outline' as const, text: 'Step-by-step voice guidance' },
 ];
 
-const chefHatIcon = require('@/assets/images/chefhat-icon.png');
+const chefChatLogo = require('@/assets/images/chef_chat_logo.png');
 
 export default function PaywallSheet({ visible, onClose, onSubscribed }: PaywallSheetProps) {
   const [purchasing, setPurchasing] = useState(false);
@@ -107,7 +107,7 @@ export default function PaywallSheet({ visible, onClose, onSubscribed }: Paywall
         </TouchableOpacity>
 
         <View style={styles.content}>
-          <Image source={chefHatIcon} style={styles.icon} />
+          <Image source={chefChatLogo} style={styles.icon} />
           <Text style={styles.headline}>Unlock Voice Cooking</Text>
           <Text style={styles.subhead}>
             Let ChefChat guide you through every recipe, hands-free.
@@ -189,8 +189,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   icon: {
-    width: 72,
-    height: 72,
+    width: 160,
+    height: 160,
+    resizeMode: 'contain',
     marginBottom: 20,
   },
   headline: {

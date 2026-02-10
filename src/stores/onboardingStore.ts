@@ -43,11 +43,10 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     const { voiceName, dietaryPreferences, skillLevel } = get();
     const user = getAuth().currentUser;
     if (!user) throw new Error('Not authenticated');
+    const resolvedVoiceName = voiceName || 'Deborah';
 
     // Save voice to AsyncStorage
-    if (voiceName) {
-      await setVoiceSettings({ voiceName, languageCode: 'en-US' });
-    }
+    await setVoiceSettings({ voiceName: resolvedVoiceName, languageCode: 'en-US' });
 
     // Save profile data to Firestore
     const prefs = dietaryPreferences.filter((p) => p !== 'None');
@@ -55,7 +54,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     await updateDoc(doc(db, 'users', user.uid), {
       dietaryPreferences: prefs,
       skillLevel,
-      preferredVoiceName: voiceName || null,
+      preferredVoiceName: resolvedVoiceName,
       onboardingCompleted: true,
     });
 
